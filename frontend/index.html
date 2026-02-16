@@ -2750,30 +2750,50 @@ function LEDRingPreview({ effect, ledCount = 60, size = 280 }) {
         function computeLEDs(t) {
             const leds = new Array(ledCount);
             const spd = 0.3 + speed * 4;
+            const N = ledCount;
+
+            // Helper: pseudo-random per index+seed
+            function prng(i, seed) { let x = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453; return x - Math.floor(x); }
+            // Helper: triangle wave 0-1
+            function tri(x) { return Math.abs(((x % 1) + 1) % 1 * 2 - 1); }
 
             switch (fx) {
                 case 0: // Solid
-                    for (let i = 0; i < ledCount; i++) leds[i] = [...col1];
+                    for (let i = 0; i < N; i++) leds[i] = [...col1];
                     break;
 
                 case 1: // Blink
-                    const blinkOn = Math.sin(t * spd * 3) > 0;
-                    for (let i = 0; i < ledCount; i++) leds[i] = blinkOn ? [...col1] : [0, 0, 0];
-                    break;
-
-                case 2: { // Breathe
-                    const breathe = (Math.sin(t * spd * 1.5) + 1) / 2;
-                    for (let i = 0; i < ledCount; i++) leds[i] = col1.map(c => Math.round(c * breathe));
+                case 26: { // Blink Rainbow
+                    const on = Math.sin(t * spd * 3) > 0;
+                    for (let i = 0; i < N; i++) {
+                        if (on) { leds[i] = fx === 26 ? hsl2rgb((t * 60) % 360, 100, 50) : [...col1]; }
+                        else { leds[i] = [0, 0, 0]; }
+                    }
                     break;
                 }
 
-                case 3: { // Color Wipe
+                case 2: { // Breathe
+                    const b = (Math.sin(t * spd * 1.5) + 1) / 2;
+                    for (let i = 0; i < N; i++) leds[i] = col1.map(c => Math.round(c * b));
+                    break;
+                }
+
+                case 3: // Color Wipe
+                case 4: // Color Wipe Random
+                case 6: // Color Sweep
+                case 36: { // Sweep Random
                     const wipePos = ((t * spd * 0.5) % 2);
                     const forward = wipePos < 1;
                     const p = forward ? wipePos : wipePos - 1;
-                    for (let i = 0; i < ledCount; i++) {
-                        const frac = i / ledCount;
-                        leds[i] = frac < p ? (forward ? [...col1] : [...col2]) : (forward ? [...col2] : [...col1]);
+                    const c1 = (fx === 4 || fx === 36) ? hsl2rgb((Math.floor(t * spd) * 67) % 360, 90, 50) : col1;
+                    const c2 = (fx === 4 || fx === 36) ? hsl2rgb((Math.floor(t * spd) * 67 + 120) % 360, 90, 50) : col2;
+                    for (let i = 0; i < N; i++) {
+                        const frac = i / N;
+                        if (fx === 6 || fx === 36) {
+                            leds[i] = Math.abs(frac - p) < 0.03 ? [...c1] : lerp(c2, c1, Math.max(0, 1 - Math.abs(frac - p) * 5));
+                        } else {
+                            leds[i] = frac < p ? (forward ? [...c1] : [...c2]) : (forward ? [...c2] : [...c1]);
+                        }
                     }
                     break;
                 }
@@ -2781,122 +2801,206 @@ function LEDRingPreview({ effect, ledCount = 60, size = 280 }) {
                 case 5: // Random Colors
                 case 7: { // Dynamic
                     const seed = Math.floor(t * spd * 0.5);
-                    for (let i = 0; i < ledCount; i++) {
-                        const hash = (i * 127 + seed * 311) % 360;
-                        leds[i] = hsl2rgb(hash, 90, 50);
-                    }
+                    for (let i = 0; i < N; i++) leds[i] = hsl2rgb((i * 127 + seed * 311) % 360, 90, 50);
                     break;
                 }
 
                 case 8: // Colorloop
                 case 9: { // Rainbow
-                    const offset = t * spd * 60;
-                    for (let i = 0; i < ledCount; i++) {
-                        const hue = (i / ledCount * 360 + offset) % 360;
-                        leds[i] = hsl2rgb(hue, 100, 50);
-                    }
+                    const off = t * spd * 60;
+                    for (let i = 0; i < N; i++) leds[i] = hsl2rgb((i / N * 360 + off) % 360, 100, 50);
                     break;
                 }
 
                 case 10: { // Scan
-                    const scanPos = (Math.sin(t * spd * 2) + 1) / 2 * ledCount;
-                    for (let i = 0; i < ledCount; i++) {
-                        const dist = Math.abs(i - scanPos);
-                        const bright = Math.max(0, 1 - dist / (2 + intensity * 5));
-                        leds[i] = col1.map(c => Math.round(c * bright));
+                    const sp = (Math.sin(t * spd * 2) + 1) / 2 * N;
+                    for (let i = 0; i < N; i++) {
+                        const d = Math.abs(i - sp);
+                        leds[i] = col1.map(c => Math.round(c * Math.max(0, 1 - d / (2 + intensity * 5))));
+                    }
+                    break;
+                }
+
+                case 11: { // Dual Scan
+                    const sp1 = (Math.sin(t * spd * 2) + 1) / 2 * N;
+                    const sp2 = N - sp1;
+                    for (let i = 0; i < N; i++) {
+                        const d = Math.min(Math.abs(i - sp1), Math.abs(i - sp2));
+                        leds[i] = col1.map(c => Math.round(c * Math.max(0, 1 - d / (2 + intensity * 5))));
                     }
                     break;
                 }
 
                 case 12: { // Fade
-                    const fade = (Math.sin(t * spd * 0.8) + 1) / 2;
-                    const fCol = lerp(col1, col2, fade);
-                    for (let i = 0; i < ledCount; i++) leds[i] = [...fCol];
+                    const f = (Math.sin(t * spd * 0.8) + 1) / 2;
+                    const fc = lerp(col1, col2, f);
+                    for (let i = 0; i < N; i++) leds[i] = [...fc];
                     break;
                 }
 
-                case 13: { // Theater Chase
-                    const chaseOff = Math.floor(t * spd * 8) % 3;
-                    for (let i = 0; i < ledCount; i++) {
-                        leds[i] = (i + chaseOff) % 3 === 0 ? [...col1] : [0, 0, 0];
+                case 13: // Theater Chase
+                case 75: { // Tri Chase
+                    const cOff = Math.floor(t * spd * 8) % 3;
+                    for (let i = 0; i < N; i++) {
+                        const m = (i + cOff) % 3;
+                        leds[i] = m === 0 ? [...col1] : m === 1 && fx === 75 ? [...col2] : [0, 0, 0];
                     }
                     break;
                 }
 
                 case 14: { // Theater Chase Rainbow
-                    const chaseOff2 = Math.floor(t * spd * 8) % 3;
+                    const cOff2 = Math.floor(t * spd * 8) % 3;
                     const hOff = t * spd * 40;
-                    for (let i = 0; i < ledCount; i++) {
-                        if ((i + chaseOff2) % 3 === 0) {
-                            leds[i] = hsl2rgb((i / ledCount * 360 + hOff) % 360, 100, 50);
-                        } else {
-                            leds[i] = [0, 0, 0];
-                        }
+                    for (let i = 0; i < N; i++) {
+                        leds[i] = (i + cOff2) % 3 === 0 ? hsl2rgb((i / N * 360 + hOff) % 360, 100, 50) : [0, 0, 0];
                     }
                     break;
                 }
 
                 case 15: // Running
-                case 37: { // Running 2
-                    const runOff = t * spd * 40;
-                    for (let i = 0; i < ledCount; i++) {
-                        const wave = (Math.sin((i / ledCount * Math.PI * 4 * (1 + intensity * 3)) + runOff * 0.15) + 1) / 2;
-                        leds[i] = lerp(col2, col1, wave);
+                case 33: // Rainbow Runner
+                case 37: // Running 2
+                case 73: { // Running Dual
+                    const rOff = t * spd * 40;
+                    for (let i = 0; i < N; i++) {
+                        const wave = (Math.sin((i / N * Math.PI * 4 * (1 + intensity * 3)) + rOff * 0.15) + 1) / 2;
+                        if (fx === 33) leds[i] = hsl2rgb((i / N * 360 + rOff) % 360, 100, wave * 50);
+                        else if (fx === 73) leds[i] = wave > 0.5 ? lerp(col2, col1, (wave - 0.5) * 2) : lerp(col1, col2, wave * 2);
+                        else leds[i] = lerp(col2, col1, wave);
+                    }
+                    break;
+                }
+
+                case 16: { // Saw
+                    const sawOff = (t * spd * 0.5) % 1;
+                    for (let i = 0; i < N; i++) {
+                        const v = ((i / N + sawOff) % 1);
+                        leds[i] = col1.map(c => Math.round(c * v));
                     }
                     break;
                 }
 
                 case 17: // Twinkle
+                case 72: // Fairy Twinkle
                 case 95: { // Colortwinkles
-                    for (let i = 0; i < ledCount; i++) {
-                        const twk = Math.sin(t * spd * 3 + i * 47.3) * 0.5 + 0.5;
-                        const on = twk > (1 - intensity * 0.8);
-                        leds[i] = on ? [...col1] : col1.map(c => Math.round(c * 0.05));
+                    for (let i = 0; i < N; i++) {
+                        const tw = Math.sin(t * spd * 3 + i * 47.3) * 0.5 + 0.5;
+                        const on = tw > (1 - intensity * 0.8);
+                        if (fx === 95) leds[i] = on ? hsl2rgb((i * 37 + t * 20) % 360, 90, 50) : [2, 2, 2];
+                        else if (fx === 72) leds[i] = on ? col1.map(c => Math.round(c * tw)) : [0, 0, 0];
+                        else leds[i] = on ? [...col1] : col1.map(c => Math.round(c * 0.05));
+                    }
+                    break;
+                }
+
+                case 18: // Dissolve
+                case 19: { // Dissolve Random
+                    const phase = (t * spd * 0.3) % 2;
+                    for (let i = 0; i < N; i++) {
+                        const thresh = prng(i, 42);
+                        const p = phase < 1 ? phase : 2 - phase;
+                        const c = fx === 19 ? hsl2rgb(prng(i, 7) * 360, 90, 50) : col1;
+                        leds[i] = thresh < p ? [...c] : [0, 0, 0];
                     }
                     break;
                 }
 
                 case 20: // Sparkle
+                case 21: // Sparkle Dark
                 case 22: { // Sparkle+
-                    for (let i = 0; i < ledCount; i++) {
-                        leds[i] = col1.map(c => Math.round(c * 0.15));
-                    }
-                    const numSparks = Math.floor(1 + intensity * 8);
-                    for (let s = 0; s < numSparks; s++) {
-                        const sparkIdx = Math.floor(((Math.sin(t * 73.1 * spd + s * 17.7) + 1) / 2) * ledCount) % ledCount;
-                        leds[sparkIdx] = [...col1];
+                    const bg = fx === 21 ? [...col1] : col1.map(c => Math.round(c * 0.15));
+                    for (let i = 0; i < N; i++) leds[i] = [...bg];
+                    const ns = Math.floor(1 + intensity * 8);
+                    for (let s = 0; s < ns; s++) {
+                        const si = Math.floor(((Math.sin(t * 73.1 * spd + s * 17.7) + 1) / 2) * N) % N;
+                        leds[si] = fx === 21 ? [0, 0, 0] : [...col1];
                     }
                     break;
                 }
 
-                case 23: { // Strobe
-                    const strobeOn = (t * spd * 10) % 1 < 0.15;
-                    for (let i = 0; i < ledCount; i++) leds[i] = strobeOn ? [...col1] : [0, 0, 0];
+                case 23: // Strobe
+                case 24: // Strobe Rainbow
+                case 25: { // Strobe Mega
+                    const duty = fx === 25 ? 0.3 : 0.15;
+                    const on = (t * spd * (fx === 25 ? 5 : 10)) % 1 < duty;
+                    for (let i = 0; i < N; i++) {
+                        if (on) leds[i] = fx === 24 ? hsl2rgb((t * 120) % 360, 100, 50) : [...col1];
+                        else leds[i] = [0, 0, 0];
+                    }
+                    break;
+                }
+
+                case 27: { // Android
+                    const headPos = (t * spd * 20) % N;
+                    const tailLen = Math.floor(N * 0.3 * (0.5 + intensity * 0.5));
+                    for (let i = 0; i < N; i++) {
+                        const dist = ((headPos - i) % N + N) % N;
+                        leds[i] = dist < tailLen ? lerp(col2, col1, 1 - dist / tailLen) : [...col2];
+                    }
                     break;
                 }
 
                 case 28: // Chase
-                case 30: { // Chase Rainbow
-                    const chLen = Math.max(2, Math.floor(ledCount * 0.15));
-                    const chPos = ((t * spd * 30) % ledCount);
-                    for (let i = 0; i < ledCount; i++) {
-                        const dist = ((i - chPos) % ledCount + ledCount) % ledCount;
+                case 29: // Chase Random
+                case 30: // Chase Rainbow
+                case 31: // Chase Flash
+                case 32: { // Chase Flash Random
+                    const chLen = Math.max(2, Math.floor(N * 0.15));
+                    const chPos = ((t * spd * 30) % N);
+                    for (let i = 0; i < N; i++) {
+                        const dist = ((i - chPos) % N + N) % N;
                         if (dist < chLen) {
-                            leds[i] = fx === 30
-                                ? hsl2rgb((i / ledCount * 360 + t * 60) % 360, 100, 50)
-                                : [...col1];
-                        } else {
-                            leds[i] = [...col2];
-                        }
+                            if (fx === 30) leds[i] = hsl2rgb((i / N * 360 + t * 60) % 360, 100, 50);
+                            else if (fx === 29 || fx === 32) leds[i] = hsl2rgb(prng(Math.floor(t * spd), 3) * 360, 90, 50);
+                            else if ((fx === 31 || fx === 32) && (t * spd * 15) % 1 < 0.2) leds[i] = [255, 255, 255];
+                            else leds[i] = [...col1];
+                        } else { leds[i] = [...col2]; }
                     }
                     break;
                 }
 
-                case 40: { // Scanner (Knight Rider)
-                    const scanP = (Math.sin(t * spd * 2.5) + 1) / 2 * ledCount;
-                    for (let i = 0; i < ledCount; i++) {
-                        const d = Math.abs(i - scanP);
-                        const b = Math.max(0, 1 - d / (3 + intensity * 6));
+                case 34: { // Colorful
+                    const cols = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]];
+                    const shift = Math.floor(t * spd * 2);
+                    for (let i = 0; i < N; i++) leds[i] = [...cols[(i + shift) % 4]];
+                    break;
+                }
+
+                case 35: { // Traffic Light
+                    const phase3 = Math.floor(t * spd * 1.5) % 3;
+                    const tc = phase3 === 0 ? [255, 0, 0] : phase3 === 1 ? [255, 180, 0] : [0, 255, 0];
+                    for (let i = 0; i < N; i++) leds[i] = [...tc];
+                    break;
+                }
+
+                case 38: { // Aurora
+                    for (let i = 0; i < N; i++) {
+                        const v1 = Math.sin(i * 0.15 + t * spd * 0.8) * 0.5 + 0.5;
+                        const v2 = Math.sin(i * 0.08 - t * spd * 0.5) * 0.5 + 0.5;
+                        const hue = (120 + v1 * 80 + v2 * 40 + t * 10) % 360;
+                        leds[i] = hsl2rgb(hue, 80, 20 + v1 * v2 * 40);
+                    }
+                    break;
+                }
+
+                case 39: // Stream
+                case 82: { // Stream 2
+                    const sOff = t * spd * 30;
+                    for (let i = 0; i < N; i++) {
+                        const p = ((i + sOff) / N * 3) % 1;
+                        if (fx === 82) leds[i] = hsl2rgb((p * 360 + t * 30) % 360, 90, 30 + p * 40);
+                        else leds[i] = lerp(col2, col1, p);
+                    }
+                    break;
+                }
+
+                case 40: // Scanner (Knight Rider)
+                case 41: { // Lighthouse
+                    const sp = fx === 41 ? ((t * spd * 0.8) % 1) * N : (Math.sin(t * spd * 2.5) + 1) / 2 * N;
+                    const w = fx === 41 ? N * 0.08 : 3 + intensity * 6;
+                    for (let i = 0; i < N; i++) {
+                        const d = fx === 41 ? Math.min(Math.abs(i - sp), N - Math.abs(i - sp)) : Math.abs(i - sp);
+                        const b = Math.max(0, 1 - d / w);
                         leds[i] = col1.map(c => Math.round(c * b * b));
                     }
                     break;
@@ -2905,20 +3009,20 @@ function LEDRingPreview({ effect, ledCount = 60, size = 280 }) {
                 case 42: // Fireworks
                 case 44: // Fireworks Starburst
                 case 45: { // Fireworks 1D
-                    for (let i = 0; i < ledCount; i++) leds[i] = [0, 0, 0];
-                    const numBursts = 3 + Math.floor(intensity * 5);
-                    for (let b = 0; b < numBursts; b++) {
-                        const burstTime = (t * spd * 0.8 + b * 2.7) % 3;
-                        if (burstTime < 1.5) {
-                            const center = Math.floor(((Math.sin(b * 37.7) + 1) / 2) * ledCount);
-                            const burstRadius = burstTime * (3 + intensity * 8);
-                            const fade = Math.max(0, 1 - burstTime / 1.5);
-                            const burstCol = b % 2 === 0 ? col1 : col2;
-                            for (let i = 0; i < ledCount; i++) {
-                                const d = Math.min(Math.abs(i - center), ledCount - Math.abs(i - center));
-                                if (d < burstRadius) {
-                                    const bright = fade * Math.max(0, 1 - d / burstRadius);
-                                    leds[i] = leds[i].map((v, ch) => Math.min(255, v + Math.round(burstCol[ch] * bright)));
+                    for (let i = 0; i < N; i++) leds[i] = [0, 0, 0];
+                    const nB = 3 + Math.floor(intensity * 5);
+                    for (let b = 0; b < nB; b++) {
+                        const bt = (t * spd * 0.8 + b * 2.7) % 3;
+                        if (bt < 1.5) {
+                            const ctr = Math.floor(prng(b, 37) * N);
+                            const rad = bt * (3 + intensity * 8);
+                            const fade = Math.max(0, 1 - bt / 1.5);
+                            const bc = b % 3 === 0 ? col1 : b % 3 === 1 ? col2 : col3;
+                            for (let i = 0; i < N; i++) {
+                                const d = Math.min(Math.abs(i - ctr), N - Math.abs(i - ctr));
+                                if (d < rad) {
+                                    const br = fade * Math.max(0, 1 - d / rad);
+                                    leds[i] = leds[i].map((v, ch) => Math.min(255, v + Math.round(bc[ch] * br)));
                                 }
                             }
                         }
@@ -2926,78 +3030,380 @@ function LEDRingPreview({ effect, ledCount = 60, size = 280 }) {
                     break;
                 }
 
-                case 47: // Sinelon
-                case 49: { // Sinelon Rainbow
-                    const sinPos = (Math.sin(t * spd * 1.8) + 1) / 2 * ledCount;
-                    for (let i = 0; i < ledCount; i++) {
-                        // Fade trail
-                        const d = ((sinPos - i) % ledCount + ledCount) % ledCount;
-                        const trail = Math.max(0, 1 - d / (5 + intensity * 15));
-                        if (fx === 49) {
-                            leds[i] = hsl2rgb((i / ledCount * 360 + t * 30) % 360, 100, trail * 50);
-                        } else {
-                            leds[i] = col1.map(c => Math.round(c * trail));
+                case 43: { // Rain
+                    for (let i = 0; i < N; i++) leds[i] = col2.map(c => Math.round(c * 0.1));
+                    const nDrops = 5 + Math.floor(intensity * 10);
+                    for (let d = 0; d < nDrops; d++) {
+                        const pos = ((prng(d, 5) * N + t * spd * 20 * (0.5 + prng(d, 8) * 0.5)) % N);
+                        const idx = Math.floor(pos) % N;
+                        const fade = Math.max(0, 1 - (pos % 1));
+                        leds[idx] = col1.map(c => Math.min(255, Math.round(c * fade)));
+                    }
+                    break;
+                }
+
+                case 46: { // Bouncing Balls
+                    for (let i = 0; i < N; i++) leds[i] = [0, 0, 0];
+                    const nBalls = 2 + Math.floor(intensity * 4);
+                    for (let b = 0; b < nBalls; b++) {
+                        const period = 1.5 + b * 0.3;
+                        const phase = (t * spd / period) % 1;
+                        const h = Math.abs(Math.sin(phase * Math.PI));
+                        const pos = Math.floor(h * (N - 1));
+                        const bc = b === 0 ? col1 : b === 1 ? col2 : col3;
+                        for (let j = -1; j <= 1; j++) {
+                            const idx = (pos + j + N) % N;
+                            leds[idx] = leds[idx].map((v, ch) => Math.min(255, v + bc[ch]));
                         }
+                    }
+                    break;
+                }
+
+                case 47: // Sinelon
+                case 48: // Sinelon Dual
+                case 49: { // Sinelon Rainbow
+                    const sPos = (Math.sin(t * spd * 1.8) + 1) / 2 * N;
+                    const sPos2 = fx === 48 ? N - sPos : -1;
+                    for (let i = 0; i < N; i++) {
+                        const d1 = ((sPos - i) % N + N) % N;
+                        const d2 = fx === 48 ? ((sPos2 - i) % N + N) % N : N;
+                        const trail = Math.max(
+                            Math.max(0, 1 - d1 / (5 + intensity * 15)),
+                            Math.max(0, 1 - d2 / (5 + intensity * 15))
+                        );
+                        if (fx === 49) leds[i] = hsl2rgb((i / N * 360 + t * 30) % 360, 100, trail * 50);
+                        else leds[i] = col1.map(c => Math.round(c * trail));
+                    }
+                    break;
+                }
+
+                case 50: { // Popcorn
+                    for (let i = 0; i < N; i++) leds[i] = [0, 0, 0];
+                    const nPop = 4 + Math.floor(intensity * 8);
+                    for (let p = 0; p < nPop; p++) {
+                        const pt = (t * spd + p * 1.7) % 2;
+                        if (pt < 1.2) {
+                            const h = Math.sin(pt / 1.2 * Math.PI) * (0.3 + prng(p, 3) * 0.7);
+                            const pos = Math.floor(prng(p, 5) * N * 0.8 + N * 0.1 + h * N * 0.3) % N;
+                            leds[pos] = p % 2 === 0 ? [...col1] : [...col2];
+                        }
+                    }
+                    break;
+                }
+
+                case 51: { // Drip
+                    for (let i = 0; i < N; i++) leds[i] = [...col2];
+                    const dripPhase = (t * spd * 0.5) % 2;
+                    const dripPos = dripPhase < 1 ? Math.floor(dripPhase * N) : Math.floor(N - 1);
+                    if (dripPhase >= 1) {
+                        const splash = (dripPhase - 1) * 3;
+                        for (let i = 0; i < N; i++) {
+                            const d = Math.abs(i - (N - 1));
+                            if (d < splash * 5) leds[i] = col1.map(c => Math.round(c * Math.max(0, 1 - d / (splash * 5))));
+                        }
+                    } else {
+                        for (let j = -1; j <= 1; j++) { const idx = (dripPos + j + N) % N; leds[idx] = [...col1]; }
                     }
                     break;
                 }
 
                 case 52: { // Plasma
-                    for (let i = 0; i < ledCount; i++) {
+                    for (let i = 0; i < N; i++) {
                         const v1 = Math.sin(i * 0.3 + t * spd * 2);
                         const v2 = Math.sin(i * 0.15 - t * spd * 1.5);
                         const v3 = Math.sin((i * 0.1 + t * spd) * 0.5);
-                        const v = (v1 + v2 + v3 + 3) / 6;
-                        leds[i] = lerp(col1, col2, v);
+                        leds[i] = lerp(col1, col2, (v1 + v2 + v3 + 3) / 6);
                     }
                     break;
                 }
 
-                case 56: { // Heartbeat
-                    const heartPhase = (t * spd * 2) % 2;
-                    let pulse = 0;
-                    if (heartPhase < 0.15) pulse = heartPhase / 0.15;
-                    else if (heartPhase < 0.3) pulse = 1 - (heartPhase - 0.15) / 0.15;
-                    else if (heartPhase < 0.45) pulse = (heartPhase - 0.3) / 0.15 * 0.7;
-                    else if (heartPhase < 0.7) pulse = 0.7 * (1 - (heartPhase - 0.45) / 0.25);
-                    for (let i = 0; i < ledCount; i++) leds[i] = col1.map(c => Math.round(c * pulse));
+                case 53: { // Percent
+                    const pct = (intensity * 100);
+                    const fill = Math.floor(N * pct / 100);
+                    for (let i = 0; i < N; i++) leds[i] = i < fill ? [...col1] : [...col2];
                     break;
                 }
 
-                case 67: { // Gradient
-                    for (let i = 0; i < ledCount; i++) {
-                        const p = i / ledCount;
-                        leds[i] = lerp(col1, col2, p);
-                    }
-                    break;
-                }
-
-                case 69: { // Police
-                    const polPhase = (t * spd * 4) % 2;
-                    for (let i = 0; i < ledCount; i++) {
-                        const half = i < ledCount / 2;
-                        if (polPhase < 1) {
-                            leds[i] = half ? [255, 0, 0] : [0, 0, 255];
-                        } else {
-                            leds[i] = half ? [0, 0, 255] : [255, 0, 0];
+                case 54: // Ripple
+                case 55: // Ripple Rainbow
+                case 100: { // Ripple (alt)
+                    for (let i = 0; i < N; i++) leds[i] = col2.map(c => Math.round(c * 0.1));
+                    const nRip = 3 + Math.floor(intensity * 4);
+                    for (let r = 0; r < nRip; r++) {
+                        const rt = (t * spd * 0.6 + r * 1.3) % 3;
+                        const center = Math.floor(prng(r, 9) * N);
+                        const radius = rt * (5 + intensity * 15);
+                        const fade = Math.max(0, 1 - rt / 3);
+                        for (let i = 0; i < N; i++) {
+                            const d = Math.min(Math.abs(i - center), N - Math.abs(i - center));
+                            if (Math.abs(d - radius) < 2) {
+                                const br = fade * Math.max(0, 1 - Math.abs(d - radius) / 2);
+                                const rc = (fx === 55) ? hsl2rgb((r * 60 + t * 30) % 360, 100, 50) : col1;
+                                leds[i] = leds[i].map((v, ch) => Math.min(255, v + Math.round(rc[ch] * br)));
+                            }
                         }
                     }
                     break;
                 }
 
+                case 56: { // Heartbeat
+                    const hp = (t * spd * 2) % 2;
+                    let pulse = 0;
+                    if (hp < 0.15) pulse = hp / 0.15;
+                    else if (hp < 0.3) pulse = 1 - (hp - 0.15) / 0.15;
+                    else if (hp < 0.45) pulse = (hp - 0.3) / 0.15 * 0.7;
+                    else if (hp < 0.7) pulse = 0.7 * (1 - (hp - 0.45) / 0.25);
+                    for (let i = 0; i < N; i++) leds[i] = col1.map(c => Math.round(c * pulse));
+                    break;
+                }
+
+                case 57: { // Pacifica
+                    for (let i = 0; i < N; i++) {
+                        const v1 = Math.sin(i * 0.12 + t * spd * 0.6) * 0.5 + 0.5;
+                        const v2 = Math.sin(i * 0.08 - t * spd * 0.4) * 0.5 + 0.5;
+                        const v3 = Math.sin(i * 0.2 + t * spd * 1.1) * 0.3 + 0.5;
+                        const bright = (v1 + v2 + v3) / 3;
+                        leds[i] = hsl2rgb(190 + v1 * 30, 80, bright * 40);
+                    }
+                    break;
+                }
+
+                case 58: // Candle
+                case 59: // Candle Multi
+                case 65: { // Candle (alt)
+                    for (let i = 0; i < N; i++) {
+                        const flicker = 0.5 + prng(i, Math.floor(t * spd * 10)) * 0.5;
+                        if (fx === 59) {
+                            const hue = (i / N * 40 + 10);
+                            leds[i] = hsl2rgb(hue, 100, flicker * 50);
+                        } else {
+                            leds[i] = [Math.round(255 * flicker), Math.round(120 * flicker), Math.round(20 * flicker * 0.3)];
+                        }
+                    }
+                    break;
+                }
+
+                case 60: { // Solid Pattern
+                    for (let i = 0; i < N; i++) leds[i] = i % 2 === 0 ? [...col1] : [...col2];
+                    break;
+                }
+
+                case 61: { // Solid Pattern Tri
+                    for (let i = 0; i < N; i++) {
+                        const m = i % 3;
+                        leds[i] = m === 0 ? [...col1] : m === 1 ? [...col2] : [...col3];
+                    }
+                    break;
+                }
+
+                case 62: { // Spots
+                    const spotW = Math.max(2, Math.floor(N / (3 + intensity * 8)));
+                    for (let i = 0; i < N; i++) {
+                        leds[i] = (i % (spotW * 2)) < spotW ? [...col1] : [...col2];
+                    }
+                    break;
+                }
+
+                case 63: { // Spots Fade
+                    const spotW2 = Math.max(2, Math.floor(N / (3 + intensity * 8)));
+                    for (let i = 0; i < N; i++) {
+                        const pos = (i % (spotW2 * 2)) / (spotW2 * 2);
+                        const v = (Math.sin(pos * Math.PI * 2) + 1) / 2;
+                        leds[i] = lerp(col2, col1, v);
+                    }
+                    break;
+                }
+
+                case 64: { // Glitter
+                    for (let i = 0; i < N; i++) leds[i] = [...col2];
+                    const nGlit = Math.floor(2 + intensity * N * 0.2);
+                    for (let g = 0; g < nGlit; g++) {
+                        const gi = Math.floor(prng(g, Math.floor(t * spd * 5)) * N);
+                        leds[gi] = [...col1];
+                    }
+                    break;
+                }
+
+                case 66: { // Fire Flicker
+                    for (let i = 0; i < N; i++) {
+                        const fl = 0.4 + prng(i, Math.floor(t * spd * 15)) * 0.6;
+                        leds[i] = [Math.round(255 * fl), Math.round(96 * fl * fl), Math.round(12 * fl * fl * fl)];
+                    }
+                    break;
+                }
+
+                case 67: { // Gradient
+                    for (let i = 0; i < N; i++) leds[i] = lerp(col1, col2, i / N);
+                    break;
+                }
+
+                case 68: { // Loading
+                    const loadPos = (t * spd * 0.4) % 1;
+                    const loadLen = 0.15 + intensity * 0.3;
+                    for (let i = 0; i < N; i++) {
+                        const p = i / N;
+                        const d = Math.min(Math.abs(p - loadPos), 1 - Math.abs(p - loadPos));
+                        leds[i] = d < loadLen ? col1.map(c => Math.round(c * Math.max(0, 1 - d / loadLen))) : [...col2];
+                    }
+                    break;
+                }
+
+                case 69: { // Police
+                    const polP = (t * spd * 4) % 2;
+                    for (let i = 0; i < N; i++) {
+                        const half = i < N / 2;
+                        leds[i] = polP < 1 ? (half ? [255, 0, 0] : [0, 0, 255]) : (half ? [0, 0, 255] : [255, 0, 0]);
+                    }
+                    break;
+                }
+
+                case 70: { // Fairy
+                    for (let i = 0; i < N; i++) {
+                        const v = Math.sin(i * 0.5 + t * spd * 2) * 0.5 + 0.5;
+                        const twk = prng(i, Math.floor(t * spd * 8)) > 0.7 ? 1 : v * 0.3;
+                        leds[i] = col1.map(c => Math.round(c * twk));
+                    }
+                    break;
+                }
+
+                case 71: { // Two Dots
+                    const dot1 = Math.floor(((t * spd * 0.5) % 1) * N);
+                    const dot2 = (dot1 + Math.floor(N / 2)) % N;
+                    for (let i = 0; i < N; i++) {
+                        const d1 = Math.min(Math.abs(i - dot1), N - Math.abs(i - dot1));
+                        const d2 = Math.min(Math.abs(i - dot2), N - Math.abs(i - dot2));
+                        if (d1 < 3) leds[i] = [...col1];
+                        else if (d2 < 3) leds[i] = [...col2];
+                        else leds[i] = [0, 0, 0];
+                    }
+                    break;
+                }
+
+                case 74: { // Halloween
+                    const hOff2 = t * spd * 20;
+                    for (let i = 0; i < N; i++) {
+                        const p = ((i + hOff2) / N * 2) % 1;
+                        leds[i] = p < 0.5 ? [255, Math.round(60 * (p * 2)), 0] : [128, 0, Math.round(128 * ((p - 0.5) * 2))];
+                    }
+                    break;
+                }
+
+                case 76: { // Tri Wipe
+                    const twP = (t * spd * 0.3) % 3;
+                    const twFrac = twP % 1;
+                    const twStage = Math.floor(twP);
+                    const cols = [col1, col2, col3];
+                    for (let i = 0; i < N; i++) {
+                        leds[i] = i / N < twFrac ? [...cols[twStage]] : [...cols[(twStage + 2) % 3]];
+                    }
+                    break;
+                }
+
+                case 77: { // Tri Fade
+                    const tfP = (t * spd * 0.5) % 3;
+                    const tfStage = Math.floor(tfP);
+                    const tfFrac = tfP - tfStage;
+                    const tfCols = [col1, col2, col3];
+                    const tfC = lerp(tfCols[tfStage], tfCols[(tfStage + 1) % 3], tfFrac);
+                    for (let i = 0; i < N; i++) leds[i] = [...tfC];
+                    break;
+                }
+
+                case 78: { // Lightning
+                    for (let i = 0; i < N; i++) leds[i] = [0, 0, 0];
+                    const ltPhase = (t * spd * 2) % 3;
+                    if (ltPhase < 0.1 || (ltPhase > 0.2 && ltPhase < 0.25)) {
+                        const ltCenter = Math.floor(prng(0, Math.floor(t * spd)) * N);
+                        const ltWidth = Math.floor(N * 0.3);
+                        for (let i = 0; i < N; i++) {
+                            const d = Math.min(Math.abs(i - ltCenter), N - Math.abs(i - ltCenter));
+                            if (d < ltWidth) leds[i] = [255, 255, 255];
+                        }
+                    }
+                    break;
+                }
+
+                case 79: { // ICU
+                    for (let i = 0; i < N; i++) leds[i] = [0, 0, 0];
+                    const eyeSpacing = Math.floor(N * 0.1);
+                    const eyePos = Math.floor((Math.sin(t * spd * 1.5) + 1) / 2 * (N - eyeSpacing * 2)) + eyeSpacing;
+                    leds[eyePos % N] = [...col1];
+                    leds[(eyePos + eyeSpacing) % N] = [...col1];
+                    break;
+                }
+
+                case 80: { // Multi Comet
+                    for (let i = 0; i < N; i++) leds[i] = [0, 0, 0];
+                    const nComets = 3;
+                    for (let c = 0; c < nComets; c++) {
+                        const cPos = ((t * spd * 25 * (0.7 + c * 0.3) + c * N / nComets) % N);
+                        const cLen = 5 + intensity * 10;
+                        const cc = c === 0 ? col1 : c === 1 ? col2 : col3;
+                        for (let i = 0; i < N; i++) {
+                            const d = ((cPos - i) % N + N) % N;
+                            if (d < cLen) {
+                                const br = 1 - d / cLen;
+                                leds[i] = leds[i].map((v, ch) => Math.min(255, v + Math.round(cc[ch] * br * br)));
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                case 81: { // Scanner Dual
+                    const sdP1 = (Math.sin(t * spd * 2) + 1) / 2 * N;
+                    const sdP2 = (Math.sin(t * spd * 2 + Math.PI) + 1) / 2 * N;
+                    for (let i = 0; i < N; i++) {
+                        const d1 = Math.abs(i - sdP1);
+                        const d2 = Math.abs(i - sdP2);
+                        const b1 = Math.max(0, 1 - d1 / (3 + intensity * 6));
+                        const b2 = Math.max(0, 1 - d2 / (3 + intensity * 6));
+                        leds[i] = [
+                            Math.min(255, Math.round(col1[0] * b1 + col2[0] * b2)),
+                            Math.min(255, Math.round(col1[1] * b1 + col2[1] * b2)),
+                            Math.min(255, Math.round(col1[2] * b1 + col2[2] * b2)),
+                        ];
+                    }
+                    break;
+                }
+
+                case 83: { // Oscillate
+                    const osc1 = (Math.sin(t * spd * 2) + 1) / 2;
+                    const osc2 = (Math.sin(t * spd * 3.1) + 1) / 2;
+                    const osc3 = (Math.sin(t * spd * 1.7) + 1) / 2;
+                    const third = N / 3;
+                    for (let i = 0; i < N; i++) {
+                        if (i < third) leds[i] = Math.abs(i / third - osc1) < 0.1 ? [...col1] : [0, 0, 0];
+                        else if (i < third * 2) leds[i] = Math.abs((i - third) / third - osc2) < 0.1 ? [...col2] : [0, 0, 0];
+                        else leds[i] = Math.abs((i - third * 2) / third - osc3) < 0.1 ? [...col3] : [0, 0, 0];
+                    }
+                    break;
+                }
+
                 case 84: { // Pride 2015
-                    const offset2 = t * spd * 50;
-                    for (let i = 0; i < ledCount; i++) {
-                        const hue = (i / ledCount * 360 + offset2 + Math.sin(i * 0.2 + t) * 30) % 360;
+                    const pOff = t * spd * 50;
+                    for (let i = 0; i < N; i++) {
+                        const hue = (i / N * 360 + pOff + Math.sin(i * 0.2 + t) * 30) % 360;
                         leds[i] = hsl2rgb(hue, 100, 50);
+                    }
+                    break;
+                }
+
+                case 85: { // Juggle
+                    for (let i = 0; i < N; i++) leds[i] = [0, 0, 0];
+                    const nJug = 3 + Math.floor(intensity * 5);
+                    for (let j = 0; j < nJug; j++) {
+                        const jPos = Math.floor((Math.sin(t * spd * (1 + j * 0.7) + j * 2.3) + 1) / 2 * N);
+                        const jCol = hsl2rgb((j * 50 + t * 20) % 360, 100, 50);
+                        for (let d = -1; d <= 1; d++) leds[(jPos + d + N) % N] = [...jCol];
                     }
                     break;
                 }
 
                 case 86: { // Palette
                     const palOff = t * spd * 20;
-                    for (let i = 0; i < ledCount; i++) {
-                        const p = ((i / ledCount * 3 + palOff / ledCount) % 1);
+                    for (let i = 0; i < N; i++) {
+                        const p = ((i / N * 3 + palOff / N) % 1);
                         if (p < 0.33) leds[i] = lerp(col1, col2, p / 0.33);
                         else if (p < 0.66) leds[i] = lerp(col2, col3, (p - 0.33) / 0.33);
                         else leds[i] = lerp(col3, col1, (p - 0.66) / 0.34);
@@ -3006,10 +3412,9 @@ function LEDRingPreview({ effect, ledCount = 60, size = 280 }) {
                 }
 
                 case 87: { // Fire 2012
-                    for (let i = 0; i < ledCount; i++) {
+                    for (let i = 0; i < N; i++) {
                         const heat = Math.max(0, Math.sin(i * 0.4 + t * spd * 3) * 0.5 + 0.5 +
-                            Math.sin(i * 0.9 - t * spd * 5) * 0.3 +
-                            Math.random() * intensity * 0.15);
+                            Math.sin(i * 0.9 - t * spd * 5) * 0.3 + prng(i, Math.floor(t * 10)) * intensity * 0.15);
                         const h = Math.min(1, heat);
                         if (h < 0.33) leds[i] = [Math.round(h * 3 * 255), 0, 0];
                         else if (h < 0.66) leds[i] = [255, Math.round((h - 0.33) * 3 * 200), 0];
@@ -3018,26 +3423,96 @@ function LEDRingPreview({ effect, ledCount = 60, size = 280 }) {
                     break;
                 }
 
-                case 97: // Meteor
-                case 98: { // Meteor Smooth
-                    const meteorPos = (t * spd * 30) % (ledCount + 20);
-                    const meteorLen = 5 + intensity * 15;
-                    for (let i = 0; i < ledCount; i++) {
-                        const dist = meteorPos - i;
-                        if (dist >= 0 && dist < meteorLen) {
-                            const bright = 1 - dist / meteorLen;
-                            leds[i] = col1.map(c => Math.round(c * bright * bright));
-                        } else {
-                            leds[i] = [0, 0, 0];
-                        }
+                case 88: { // Colorwaves
+                    const cwOff = t * spd * 30;
+                    for (let i = 0; i < N; i++) {
+                        const v = Math.sin(i * 0.2 + cwOff * 0.05) * 0.5 + 0.5;
+                        const hue = (i / N * 180 + t * spd * 20) % 360;
+                        leds[i] = hsl2rgb(hue, 90, 15 + v * 40);
                     }
                     break;
                 }
 
-                default: { // Generic animated fallback
-                    const genOff = t * spd * 40;
-                    for (let i = 0; i < ledCount; i++) {
-                        const wave = (Math.sin(i / ledCount * Math.PI * 4 + genOff * 0.1) + 1) / 2;
+                case 89: { // BPM
+                    const bpmOff = t * spd * 60;
+                    for (let i = 0; i < N; i++) {
+                        const beat = Math.sin(i * 0.5 + bpmOff * 0.1) * 0.5 + 0.5;
+                        const hue = (i / N * 360 + bpmOff) % 360;
+                        leds[i] = hsl2rgb(hue, 100, beat * 50);
+                    }
+                    break;
+                }
+
+                case 90: { // Fill Noise
+                    for (let i = 0; i < N; i++) {
+                        const n = prng(i, Math.floor(t * spd * 3));
+                        leds[i] = lerp(col1, col2, n);
+                    }
+                    break;
+                }
+
+                case 91: // Noise 1
+                case 92: // Noise 2
+                case 93: // Noise 3
+                case 94: { // Noise 4
+                    const nScale = [0.3, 0.15, 0.5, 0.08][fx - 91];
+                    const nSpeed = [1, 0.5, 2, 0.3][fx - 91];
+                    for (let i = 0; i < N; i++) {
+                        const v1 = Math.sin(i * nScale + t * spd * nSpeed) * 0.5 + 0.5;
+                        const v2 = Math.sin(i * nScale * 2.1 - t * spd * nSpeed * 0.7) * 0.5 + 0.5;
+                        const hue = (v1 * 360 + t * 10) % 360;
+                        leds[i] = hsl2rgb(hue, 80, (v1 * v2) * 50 + 5);
+                    }
+                    break;
+                }
+
+                case 96: { // Lake
+                    for (let i = 0; i < N; i++) {
+                        const v1 = Math.sin(i * 0.2 + t * spd * 0.5) * 0.5 + 0.5;
+                        const v2 = Math.sin(i * 0.1 - t * spd * 0.3) * 0.5 + 0.5;
+                        leds[i] = hsl2rgb(200 + v1 * 40, 70, (v1 * v2) * 35 + 5);
+                    }
+                    break;
+                }
+
+                case 97: // Meteor
+                case 98: { // Meteor Smooth
+                    const mPos = (t * spd * 30) % (N + 20);
+                    const mLen = 5 + intensity * 15;
+                    for (let i = 0; i < N; i++) {
+                        const d = mPos - i;
+                        if (d >= 0 && d < mLen) {
+                            const br = fx === 98 ? (1 - d / mLen) : Math.pow(1 - d / mLen, 2);
+                            leds[i] = col1.map(c => Math.round(c * br));
+                        } else { leds[i] = [0, 0, 0]; }
+                    }
+                    break;
+                }
+
+                case 99: { // Railway
+                    const rwOff = Math.floor(t * spd * 2) % 2;
+                    for (let i = 0; i < N; i++) {
+                        leds[i] = ((Math.floor(i / Math.max(1, Math.floor(N / 8))) + rwOff) % 2 === 0) ? [...col1] : [...col2];
+                    }
+                    break;
+                }
+
+                case 101: // Twinklefox
+                case 102: { // Twinklecat
+                    for (let i = 0; i < N; i++) {
+                        const base = fx === 102 ? 0.02 : 0.05;
+                        const phase = Math.sin(t * spd * 1.5 + i * 7.3 + prng(i, 1) * 100);
+                        const bright = phase > (0.3 - intensity * 0.5) ? (phase - 0.3 + intensity * 0.5) * 2 : base;
+                        const hue = (prng(i, 2) * 60 + t * 5) % 360;
+                        leds[i] = hsl2rgb(hue, 80, Math.min(50, bright * 50));
+                    }
+                    break;
+                }
+
+                default: { // Generic animated fallback for unmapped FX
+                    const gOff = t * spd * 40;
+                    for (let i = 0; i < N; i++) {
+                        const wave = (Math.sin(i / N * Math.PI * 4 + gOff * 0.1) + 1) / 2;
                         leds[i] = lerp(col2, col1, wave);
                     }
                 }
