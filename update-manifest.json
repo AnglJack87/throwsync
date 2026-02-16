@@ -1,0 +1,8 @@
+{
+    "version": "1.1.0",
+    "download_url": "https://github.com/throwsync/throwsync/releases/download/v1.1.0/throwsync-v1.1.0.zip",
+    "changelog": "# v1.1.0 - Caller & Auto-Update\n\n- 🎙️ **Caller System** — 512 Sound-Events für jeden Wurf, Score und Spielereignis\n- 🔄 **Auto-Update** — Automatische Updates mit Ein-Klick-Installation\n- 🔧 Bugfixes und Performance-Verbesserungen",
+    "size": 0,
+    "min_python": "3.8",
+    "released": "2026-02-16"
+}
