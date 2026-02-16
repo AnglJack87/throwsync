@@ -162,7 +162,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1255,6 +1255,117 @@ async def test_caller_sound(data: dict):
         "volume": vol,
     })
     return {"success": True, "playing": sound_key}
+
+
+@app.post("/api/caller/test-scenario")
+async def test_caller_scenario(data: dict):
+    """Simulate a full game event through the real caller pipeline.
+    This uses the same _determine_caller_sounds logic as the live system,
+    then sends through broadcast_caller_sound for proper filtering + playback.
+    """
+    scenario = data.get("scenario", "")
+    params = data.get("params", {})
+
+    # Build the sound list exactly like autodarts_client._determine_caller_sounds
+    sounds = []
+
+    if scenario == "throw":
+        number = params.get("number", 20)
+        multiplier = params.get("multiplier", 1)
+        ring = params.get("ring", "")
+        dart_score = number * multiplier
+        if multiplier == 2 and number == 25:
+            field_key, effect_key, generic_key = "caller_bullseye", "caller_effect_bullseye", "caller_double"
+        elif number == 25 and multiplier == 1:
+            field_key, effect_key, generic_key = "caller_bull", "caller_effect_bull", "caller_single"
+        elif dart_score == 0 or ring == "Miss":
+            field_key, effect_key, generic_key = "caller_miss", "caller_effect_miss", None
+        else:
+            prefix = {1: "s", 2: "d", 3: "t"}.get(multiplier, "s")
+            field_key = f"caller_{prefix}{number}"
+            effect_key = f"caller_effect_{prefix}{number}"
+            gen_name = {1: "single", 2: "double", 3: "triple"}.get(multiplier, "single")
+            generic_key = f"caller_{gen_name}"
+
+        sounds.append({"key": field_key, "priority": 1, "type": "dart_name"})
+        if generic_key:
+            sounds.append({"key": generic_key, "priority": 2, "type": "dart_name_fallback"})
+        sounds.append({"key": effect_key, "priority": 1, "type": "dart_effect"})
+        if generic_key:
+            gen_effect = f"caller_effect_{generic_key.split('_')[-1]}"
+            sounds.append({"key": gen_effect, "priority": 2, "type": "dart_effect_fallback"})
+        if dart_score >= 0:
+            sounds.append({"key": f"caller_score_{min(dart_score, 180)}", "priority": 1, "type": "dart_score"})
+
+    elif scenario == "round_score":
+        score = params.get("score", 60)
+        score_key = f"caller_score_{min(score, 180)}"
+        sounds.append({"key": score_key, "priority": 1})
+        if score >= 180:
+            sounds.append({"key": "caller_ambient_180", "priority": 2})
+        elif score >= 140:
+            sounds.append({"key": "caller_ambient_140_plus", "priority": 2})
+        elif score >= 100:
+            sounds.append({"key": "caller_ambient_ton_plus", "priority": 2})
+        elif score == 26:
+            sounds.append({"key": "caller_ambient_score_26", "priority": 2})
+        elif 0 < score < 20:
+            sounds.append({"key": "caller_ambient_low_score", "priority": 2})
+        elif score == 0:
+            sounds.append({"key": "caller_ambient_score_0", "priority": 2})
+        sounds.append({"key": "caller_player_change", "priority": 3})
+
+    elif scenario == "game_on":
+        sounds.append({"key": "caller_game_on", "priority": 1})
+
+    elif scenario == "game_won":
+        sounds.append({"key": "caller_game_won", "priority": 1})
+        sounds.append({"key": "caller_ambient_gameshot", "priority": 2})
+
+    elif scenario == "match_won":
+        sounds.append({"key": "caller_match_won", "priority": 1})
+        sounds.append({"key": "caller_ambient_matchshot", "priority": 2})
+
+    elif scenario == "busted":
+        sounds.append({"key": "caller_busted", "priority": 1})
+        sounds.append({"key": "caller_ambient_busted", "priority": 2})
+
+    elif scenario == "checkout":
+        rest = params.get("rest", 170)
+        sounds.append({"key": "caller_you_require", "priority": 1})
+        sounds.append({"key": f"caller_checkout_{min(max(rest, 2), 170)}", "priority": 2})
+        sounds.append({"key": "caller_ambient_checkout_possible", "priority": 3})
+
+    elif scenario == "board_takeout":
+        sounds.append({"key": "caller_takeout", "priority": 1})
+
+    elif scenario == "board_ready":
+        sounds.append({"key": "caller_board_ready", "priority": 1})
+
+    else:
+        raise HTTPException(400, f"Unbekanntes Szenario: {scenario}")
+
+    if not sounds:
+        return {"success": False, "message": "Keine Sounds für dieses Szenario"}
+
+    # Map scenario to event_name for broadcast_caller_sound filtering
+    event_map = {
+        "throw": "throw", "round_score": "player_change",
+        "game_on": "game_on", "game_won": "game_won", "match_won": "match_won",
+        "busted": "busted", "checkout": "checkout_possible",
+        "board_takeout": "board_event", "board_ready": "board_event",
+    }
+    event_name = event_map.get(scenario, scenario)
+
+    # Send through real pipeline (respects enabled, mode, filters)
+    await broadcast_caller_sound(sounds, event_name, params)
+
+    return {
+        "success": True,
+        "scenario": scenario,
+        "event_name": event_name,
+        "sounds_sent": [s["key"] for s in sounds],
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

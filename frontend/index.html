@@ -5222,6 +5222,154 @@ function CallerPage() {
                 </div>
             )}
 
+            {/* ─── Test Center ─── */}
+            <div className="card" style={{marginTop:20}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+                    <div style={{fontWeight:700,fontSize:15}}>🧪 Test-Center</div>
+                    <span style={{fontSize:12,color:'var(--text-dim)'}}>
+                        Simuliert echte Spielereignisse durch die komplette Caller-Pipeline
+                    </span>
+                </div>
+
+                {/* Throw Simulator */}
+                <div style={{marginBottom:16}}>
+                    <div style={{fontSize:13,fontWeight:600,marginBottom:8,color:'var(--text-secondary)'}}>🎯 Einzelwurf simulieren</div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        {[
+                            {label:'S20', n:20, m:1},
+                            {label:'D20', n:20, m:2},
+                            {label:'T20', n:20, m:3},
+                            {label:'S1', n:1, m:1},
+                            {label:'D16', n:16, m:2},
+                            {label:'T19', n:19, m:3},
+                            {label:'Bull', n:25, m:1},
+                            {label:'Bullseye', n:25, m:2},
+                            {label:'Miss', n:0, m:0},
+                        ].map(t => (
+                            <button key={t.label} className="btn btn-sm"
+                                style={{fontSize:12,minWidth:60}}
+                                onClick={async () => {
+                                    const r = await API.post('/api/caller/test-scenario', {
+                                        scenario:'throw', params:{number:t.n, multiplier:t.m, ring: t.n===0?'Miss':''}
+                                    });
+                                    if (r?.success) toast(`🎯 ${t.label} gesendet (${r.sounds_sent.length} Sounds)`, 'info');
+                                    else toast(`Kein Sound für ${t.label}`, 'warning');
+                                }}>
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Round Scores */}
+                <div style={{marginBottom:16}}>
+                    <div style={{fontSize:13,fontWeight:600,marginBottom:8,color:'var(--text-secondary)'}}>📊 Rundenscore simulieren</div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        {[0, 3, 26, 41, 60, 85, 100, 120, 140, 160, 180].map(s => (
+                            <button key={s} className="btn btn-sm"
+                                style={{
+                                    fontSize:12, minWidth:48,
+                                    borderColor: s >= 180 ? 'var(--success)' : s >= 100 ? 'var(--accent)' : s < 20 ? 'var(--danger)' : undefined,
+                                    color: s >= 180 ? 'var(--success)' : s >= 100 ? 'var(--accent)' : s < 20 ? 'var(--danger)' : undefined,
+                                }}
+                                onClick={async () => {
+                                    const r = await API.post('/api/caller/test-scenario', {
+                                        scenario:'round_score', params:{round_score: s, score: s}
+                                    });
+                                    if (r?.success) toast(`📊 Score ${s} (${r.sounds_sent.length} Sounds)`, 'info');
+                                }}>
+                                {s}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Game Events */}
+                <div style={{marginBottom:16}}>
+                    <div style={{fontSize:13,fontWeight:600,marginBottom:8,color:'var(--text-secondary)'}}>🏆 Spielereignisse</div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        {[
+                            {label:'🎬 Game On', scenario:'game_on'},
+                            {label:'🏆 Game Won', scenario:'game_won'},
+                            {label:'🥇 Match Won', scenario:'match_won'},
+                            {label:'💥 Busted', scenario:'busted'},
+                            {label:'📋 Board Ready', scenario:'board_ready'},
+                            {label:'🎯 Takeout', scenario:'board_takeout'},
+                        ].map(e => (
+                            <button key={e.scenario} className="btn btn-sm"
+                                style={{fontSize:12}}
+                                onClick={async () => {
+                                    const r = await API.post('/api/caller/test-scenario', {scenario: e.scenario, params:{}});
+                                    if (r?.success) toast(`${e.label} (${r.sounds_sent.length} Sounds)`, 'info');
+                                }}>
+                                {e.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Checkout */}
+                <div style={{marginBottom:8}}>
+                    <div style={{fontSize:13,fontWeight:600,marginBottom:8,color:'var(--text-secondary)'}}>🎯 Checkout-Ansage</div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        {[170, 120, 80, 60, 40, 32, 16, 8, 2].map(c => (
+                            <button key={c} className="btn btn-sm"
+                                style={{fontSize:12,minWidth:48}}
+                                onClick={async () => {
+                                    const r = await API.post('/api/caller/test-scenario', {
+                                        scenario:'checkout', params:{rest: c}
+                                    });
+                                    if (r?.success) toast(`🎯 Checkout ${c} (${r.sounds_sent.length} Sounds)`, 'info');
+                                }}>
+                                {c}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Full Leg Simulation */}
+                <div style={{borderTop:'1px solid var(--border)',marginTop:16,paddingTop:12}}>
+                    <div style={{fontSize:13,fontWeight:600,marginBottom:8,color:'var(--text-secondary)'}}>🔁 Komplettes Leg simulieren</div>
+                    <p style={{fontSize:12,color:'var(--text-dim)',marginBottom:8}}>
+                        Spielt eine realistische Spielsequenz ab: Game On → 3 Würfe → Rundenscore → Checkout → Game Won
+                    </p>
+                    <button className="btn btn-primary btn-sm" style={{fontSize:12}}
+                        onClick={async () => {
+                            toast('🔁 Leg-Simulation gestartet...', 'info');
+                            const delay = ms => new Promise(r => setTimeout(r, ms));
+                            // Game On
+                            await API.post('/api/caller/test-scenario', {scenario:'game_on', params:{}});
+                            await delay(2000);
+                            // 3 throws: T20, T20, T20
+                            for (const t of [{n:20,m:3},{n:20,m:3},{n:20,m:3}]) {
+                                await API.post('/api/caller/test-scenario', {scenario:'throw', params:{number:t.n, multiplier:t.m}});
+                                await delay(1500);
+                            }
+                            // Round score 180
+                            await API.post('/api/caller/test-scenario', {scenario:'round_score', params:{score:180}});
+                            await delay(3000);
+                            // Checkout call
+                            await API.post('/api/caller/test-scenario', {scenario:'checkout', params:{rest:141}});
+                            await delay(2500);
+                            // T20, T19, D12 → finish
+                            for (const t of [{n:20,m:3},{n:19,m:3},{n:12,m:2}]) {
+                                await API.post('/api/caller/test-scenario', {scenario:'throw', params:{number:t.n, multiplier:t.m}});
+                                await delay(1500);
+                            }
+                            // Game Won
+                            await API.post('/api/caller/test-scenario', {scenario:'game_won', params:{}});
+                            toast('🏆 Leg-Simulation beendet!', 'success');
+                        }}>
+                        ▶ Leg-Simulation starten
+                    </button>
+                </div>
+
+                <div style={{fontSize:11,color:'var(--text-dim)',marginTop:12,fontStyle:'italic'}}>
+                    💡 Die Tests nutzen die echte Pipeline — Caller muss aktiviert sein und Sounds müssen zugewiesen sein.
+                    Der aktive Dart-Modus (Score / Feldname / Effekt) bestimmt welche Sounds bei Einzelwürfen gespielt werden.
+                </div>
+            </div>
+
             {/* ─── Info Box ─── */}
             <div className="card" style={{marginTop:20,fontSize:13,color:'var(--text-dim)'}}>
                 <div style={{fontWeight:600,marginBottom:8}}>ℹ️ So funktioniert der Caller</div>
