@@ -56,6 +56,9 @@ class AutodartsBoardConnection:
         self._current_match_id: Optional[str] = None
         self._last_game_finished: bool = False
         self._turn_score: int = 0  # Accumulated score in current turn for caller
+        self._last_player_index: int = -1  # Track player changes in match state
+        self._last_scores: Optional[list] = None  # Track gameScores to detect score changes
+        self._busted: bool = False  # Track if current turn was busted
 
     async def _get_keycloak_token(self) -> bool:
         """Authenticate with Autodarts Keycloak and get access token."""
@@ -283,10 +286,6 @@ class AutodartsBoardConnection:
                     "board-stopped": "board_stopped",
                 }
                 if normalized in caller_map:
-                    # On takeout finished = turn ended, broadcast round score
-                    if normalized == "takeout-finished" and self._turn_score > 0:
-                        await self._broadcast_caller("player_change", {"round_score": self._turn_score})
-                        self._turn_score = 0
                     await self._broadcast_caller(caller_map[normalized])
             
             if events:
@@ -315,6 +314,9 @@ class AutodartsBoardConnection:
                     logger.info(f"Board '{self.name}' TRIGGER: match-start -> {events}")
                     await self._dispatch_events("game-started", events)
                 self._turn_score = 0
+                self._last_player_index = -1
+                self._last_scores = None
+                self._busted = False
                 await self._broadcast_caller("game_on")
             elif event_type == "finish" and match_id:
                 logger.info(f"Board '{self.name}': Match beendet ({match_id[:12]}...)")
@@ -340,34 +342,104 @@ class AutodartsBoardConnection:
                 await self._dispatch_events(event_type, events)
 
     async def _handle_match_state(self, state: dict):
-        """Process match state updates to detect game events."""
+        """Process match state updates to detect game events.
+        This is the authoritative source for:
+        - Round score announcements (fires immediately when result is confirmed)
+        - Bust detection (no score caller on bust, only busted sound)
+        - ALL players (not just active player, enables opponent effects)
+        - Checkout possible detection
+        """
         game_finished = state.get("gameFinished", False)
         match_finished = state.get("finished", False)
         game_winner = state.get("gameWinner", -1)
         game_scores = state.get("gameScores", [])
-        
-        # Detect turn/player change from variant state
-        variant = state.get("variant", "")
-        turns = state.get("turns", [])
         player_index = state.get("player", -1)
+        variant = state.get("variant", "")
         
-        # Detect game won
+        # ── Detect game won / match won ──
         if game_finished and game_winner >= 0:
-            if not hasattr(self, '_last_game_finished') or not self._last_game_finished:
+            if not self._last_game_finished:
                 self._last_game_finished = True
                 if match_finished:
-                    logger.info(f"Board '{self.name}' TRIGGER: match state -> match_won")
+                    logger.info(f"Board '{self.name}' STATE: match_won (winner: player {game_winner})")
                     await self._trigger_event("match_won")
                     await self._broadcast_caller("match_won")
                 else:
-                    logger.info(f"Board '{self.name}' TRIGGER: match state -> game_won")
+                    logger.info(f"Board '{self.name}' STATE: game_won (winner: player {game_winner})")
                     await self._trigger_event("game_won")
                     await self._broadcast_caller("game_won")
+                # Reset for next game
+                self._last_scores = None
+                self._last_player_index = -1
+                self._turn_score = 0
+                self._busted = False
         elif not game_finished:
             self._last_game_finished = False
         
-        # Detect busted from gameScores going negative or variant data
-        # (The chalkboard scores with isScoreStruck=true indicate busted)
+        # ── Detect turn end (player change) ──
+        # When the player index changes, the PREVIOUS player's turn just ended
+        if player_index >= 0 and self._last_player_index >= 0 and player_index != self._last_player_index:
+            prev_player = self._last_player_index
+            
+            # Calculate round score from gameScores diff
+            round_score = 0
+            is_bust = False
+            
+            if self._last_scores and game_scores and prev_player < len(game_scores) and prev_player < len(self._last_scores):
+                old_score = self._last_scores[prev_player]
+                new_score = game_scores[prev_player]
+                score_diff = old_score - new_score  # X01: score goes DOWN
+                
+                if score_diff > 0:
+                    # Normal turn — score decreased
+                    round_score = score_diff
+                elif score_diff == 0:
+                    # Bust — score didn't change
+                    is_bust = True
+                    logger.info(f"Board '{self.name}' STATE: BUSTED (player {prev_player}, score unchanged at {old_score})")
+                elif score_diff < 0:
+                    # Score went UP — possible in Cricket or other variants, use _turn_score
+                    round_score = self._turn_score
+            elif self._turn_score > 0:
+                # Fallback: use accumulated turn score from throw events
+                round_score = self._turn_score
+            
+            if is_bust:
+                # ── BUSTED: only "busted" sound, NO score announcement ──
+                await self._trigger_event("busted")
+                await self._broadcast_caller("busted")
+                logger.info(f"Board '{self.name}' STATE: Bust detected -> caller: busted (no score)")
+            elif round_score >= 0:
+                # ── Normal turn: announce round score ──
+                # Trigger LED effect for the score
+                events = self._map_events("turn-score", {"points": round_score})
+                if events:
+                    for ev in events:
+                        mapping = self.event_mappings.get(ev)
+                        if mapping and mapping.get("enabled", True):
+                            await self._trigger_event(ev)
+                
+                # Caller: announce score immediately
+                await self._broadcast_caller("player_change", {"round_score": round_score})
+                logger.info(f"Board '{self.name}' STATE: Turn ended player {prev_player} -> score {round_score}")
+            
+            # Reset turn tracking for next turn
+            self._turn_score = 0
+            self._busted = False
+        
+        # ── Detect checkout possible ──
+        if not game_finished and game_scores and player_index >= 0 and player_index < len(game_scores):
+            remaining = game_scores[player_index]
+            if 2 <= remaining <= 170:
+                # Only announce once per turn start (when player changes to this player)
+                if player_index != self._last_player_index and self._last_player_index >= 0:
+                    await self._broadcast_caller("checkout_possible", {"rest": remaining, "remaining": remaining})
+        
+        # ── Update tracking state ──
+        if player_index >= 0:
+            self._last_player_index = player_index
+        if game_scores:
+            self._last_scores = list(game_scores)  # Copy!
 
     async def _dispatch_events(self, event_type: str, events: list):
         """Dispatch mapped events based on event type logic."""

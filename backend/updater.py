@@ -15,13 +15,19 @@ import logging
 import os
 import platform
 import shutil
+import ssl
 import sys
 import tempfile
+import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Optional
 
-import aiohttp
+try:
+    import aiohttp
+    HAS_AIOHTTP = True
+except ImportError:
+    HAS_AIOHTTP = False
 
 logger = logging.getLogger("updater")
 
@@ -99,18 +105,34 @@ async def check_for_update(manifest_url: str = None) -> dict:
     }
 
     try:
-        timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    result["error"] = f"Manifest HTTP {resp.status}"
-                    return result
-                manifest = await resp.json(content_type=None)
+        manifest = None
+        
+        # Try aiohttp first
+        if HAS_AIOHTTP:
+            try:
+                timeout = aiohttp.ClientTimeout(total=15)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            manifest = await resp.json(content_type=None)
+                        else:
+                            logger.warning(f"aiohttp manifest check HTTP {resp.status}, trying urllib fallback")
+            except Exception as e:
+                logger.warning(f"aiohttp manifest check failed: {e}, trying urllib fallback")
+        
+        # Fallback to urllib (works better on some Linux systems)
+        if manifest is None:
+            manifest = await asyncio.get_event_loop().run_in_executor(None, _urllib_get_json, url)
+    
     except asyncio.TimeoutError:
         result["error"] = "Timeout beim Abrufen des Manifests"
         return result
     except Exception as e:
         result["error"] = f"Manifest-Fehler: {str(e)}"
+        return result
+
+    if manifest is None:
+        result["error"] = "Manifest konnte nicht geladen werden"
         return result
 
     remote_ver = manifest.get("version", "0.0.0")
@@ -122,6 +144,44 @@ async def check_for_update(manifest_url: str = None) -> dict:
     result["available"] = is_newer(remote_ver, local_ver)
 
     return result
+
+
+def _urllib_get_json(url: str) -> dict:
+    """Fetch JSON via urllib (synchronous fallback for manifest check)."""
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(certifi.where())
+    except (ImportError, Exception):
+        pass  # Use system certs
+    req = urllib.request.Request(url, headers={"User-Agent": "ThrowSync-Updater/1.0"})
+    with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _urllib_download(url: str, dest_path: str, progress_callback=None) -> int:
+    """Download file via urllib (synchronous fallback). Returns bytes downloaded."""
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(certifi.where())
+    except (ImportError, Exception):
+        pass
+    req = urllib.request.Request(url, headers={"User-Agent": "ThrowSync-Updater/1.0"})
+    downloaded = 0
+    with urllib.request.urlopen(req, timeout=300, context=ctx) as resp:
+        total = int(resp.headers.get("Content-Length", 0) or 0)
+        with open(dest_path, "wb") as f:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if progress_callback and total > 0:
+                    pct = int(downloaded / total * 100)
+                    progress_callback(pct, downloaded, total)
+    return downloaded
 
 
 async def download_and_stage(download_url: str, progress_callback=None) -> dict:
@@ -144,23 +204,44 @@ async def download_and_stage(download_url: str, progress_callback=None) -> dict:
         # Download ZIP
         logger.info(f"Downloading update from {download_url}")
         tmp_zip = STAGING_DIR / "update.zip"
+        downloaded = 0
 
-        timeout = aiohttp.ClientTimeout(total=300)  # 5 min for large downloads
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(download_url) as resp:
-                if resp.status != 200:
-                    return {"success": False, "message": f"Download fehlgeschlagen: HTTP {resp.status}"}
+        # Try aiohttp first (async with progress)
+        aio_success = False
+        if HAS_AIOHTTP:
+            try:
+                timeout = aiohttp.ClientTimeout(total=300)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(download_url) as resp:
+                        if resp.status == 200:
+                            total = int(resp.headers.get("Content-Length", 0))
+                            with open(tmp_zip, "wb") as f:
+                                async for chunk in resp.content.iter_chunked(65536):
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    if progress_callback and total > 0:
+                                        pct = int(downloaded / total * 100)
+                                        await progress_callback(pct, downloaded, total)
+                            aio_success = True
+                        else:
+                            logger.warning(f"aiohttp download HTTP {resp.status}, trying urllib fallback")
+            except Exception as e:
+                logger.warning(f"aiohttp download failed: {e}, trying urllib fallback")
 
-                total = int(resp.headers.get("Content-Length", 0))
-                downloaded = 0
-
-                with open(tmp_zip, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(65536):
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if progress_callback and total > 0:
-                            pct = int(downloaded / total * 100)
-                            await progress_callback(pct, downloaded, total)
+        # Fallback to urllib (handles GitHub redirects better on some Linux)
+        if not aio_success:
+            try:
+                logger.info("Using urllib fallback for download...")
+                def sync_progress(pct, dl, tot):
+                    # Can't await in sync callback, skip WS progress
+                    pass
+                downloaded = await asyncio.get_event_loop().run_in_executor(
+                    None, _urllib_download, download_url, str(tmp_zip), sync_progress
+                )
+                if progress_callback:
+                    await progress_callback(100, downloaded, downloaded)
+            except Exception as e:
+                return {"success": False, "message": f"Download fehlgeschlagen: {str(e)}"}
 
         logger.info(f"Downloaded {downloaded} bytes")
 
