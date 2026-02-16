@@ -59,6 +59,7 @@ class AutodartsBoardConnection:
         self._last_player_index: int = -1  # Track player changes in match state
         self._last_scores: Optional[list] = None  # Track gameScores to detect score changes
         self._busted: bool = False  # Track if current turn was busted
+        self._score_announced: bool = False  # Track if score was already announced via match state
 
     async def _get_keycloak_token(self) -> bool:
         """Authenticate with Autodarts Keycloak and get access token."""
@@ -286,6 +287,21 @@ class AutodartsBoardConnection:
                     "board-stopped": "board_stopped",
                 }
                 if normalized in caller_map:
+                    # On takeout finished = turn ended
+                    if normalized == "takeout-finished":
+                        if self._busted:
+                            # Bust was detected from match state — don't announce score
+                            logger.info(f"Board '{self.name}': Takeout nach Bust — kein Score-Caller")
+                            self._busted = False
+                        elif self._score_announced:
+                            # Score was already announced from match state — skip
+                            logger.debug(f"Board '{self.name}': Score bereits angesagt, überspringe")
+                        elif self._turn_score >= 0:
+                            # Fallback: announce from turn accumulation if match state didn't fire
+                            logger.info(f"Board '{self.name}': Takeout Score-Fallback: {self._turn_score}")
+                            await self._broadcast_caller("player_change", {"round_score": self._turn_score})
+                        self._turn_score = 0
+                        self._score_announced = False
                     await self._broadcast_caller(caller_map[normalized])
             
             if events:
@@ -317,6 +333,7 @@ class AutodartsBoardConnection:
                 self._last_player_index = -1
                 self._last_scores = None
                 self._busted = False
+                self._score_announced = False
                 await self._broadcast_caller("game_on")
             elif event_type == "finish" and match_id:
                 logger.info(f"Board '{self.name}': Match beendet ({match_id[:12]}...)")
@@ -343,23 +360,22 @@ class AutodartsBoardConnection:
 
     async def _handle_match_state(self, state: dict):
         """Process match state updates to detect game events.
-        This is the authoritative source for:
-        - Round score announcements (fires immediately when result is confirmed)
-        - Bust detection (no score caller on bust, only busted sound)
-        - ALL players (not just active player, enables opponent effects)
-        - Checkout possible detection
+        Sets flags for bust/score that takeout-finished uses as fallback.
         """
         game_finished = state.get("gameFinished", False)
         match_finished = state.get("finished", False)
         game_winner = state.get("gameWinner", -1)
         game_scores = state.get("gameScores", [])
         player_index = state.get("player", -1)
-        variant = state.get("variant", "")
+        
+        logger.debug(f"Board '{self.name}' STATE: player={player_index}, scores={game_scores}, "
+                      f"finished={game_finished}, last_player={self._last_player_index}")
         
         # ── Detect game won / match won ──
         if game_finished and game_winner >= 0:
             if not self._last_game_finished:
                 self._last_game_finished = True
+                self._score_announced = True  # Don't double-announce on takeout
                 if match_finished:
                     logger.info(f"Board '{self.name}' STATE: match_won (winner: player {game_winner})")
                     await self._trigger_event("match_won")
@@ -368,78 +384,71 @@ class AutodartsBoardConnection:
                     logger.info(f"Board '{self.name}' STATE: game_won (winner: player {game_winner})")
                     await self._trigger_event("game_won")
                     await self._broadcast_caller("game_won")
-                # Reset for next game
                 self._last_scores = None
                 self._last_player_index = -1
                 self._turn_score = 0
-                self._busted = False
         elif not game_finished:
             self._last_game_finished = False
         
-        # ── Detect turn end (player change) ──
-        # When the player index changes, the PREVIOUS player's turn just ended
+        # ── Detect turn end via player change ──
         if player_index >= 0 and self._last_player_index >= 0 and player_index != self._last_player_index:
             prev_player = self._last_player_index
-            
-            # Calculate round score from gameScores diff
-            round_score = 0
+            round_score = self._turn_score  # Default: use accumulated score
             is_bust = False
             
-            if self._last_scores and game_scores and prev_player < len(game_scores) and prev_player < len(self._last_scores):
+            # Try to calculate from gameScores diff (X01: score goes DOWN)
+            if (self._last_scores and game_scores 
+                    and prev_player < len(game_scores) 
+                    and prev_player < len(self._last_scores)):
                 old_score = self._last_scores[prev_player]
                 new_score = game_scores[prev_player]
-                score_diff = old_score - new_score  # X01: score goes DOWN
+                score_diff = old_score - new_score
                 
                 if score_diff > 0:
-                    # Normal turn — score decreased
                     round_score = score_diff
-                elif score_diff == 0:
-                    # Bust — score didn't change
+                elif score_diff == 0 and self._turn_score > 0:
+                    # Score didn't change but darts were thrown → BUST
                     is_bust = True
-                    logger.info(f"Board '{self.name}' STATE: BUSTED (player {prev_player}, score unchanged at {old_score})")
-                elif score_diff < 0:
-                    # Score went UP — possible in Cricket or other variants, use _turn_score
-                    round_score = self._turn_score
-            elif self._turn_score > 0:
-                # Fallback: use accumulated turn score from throw events
-                round_score = self._turn_score
+                    logger.info(f"Board '{self.name}' STATE: BUST erkannt (player {prev_player}, score={old_score})")
             
             if is_bust:
-                # ── BUSTED: only "busted" sound, NO score announcement ──
+                self._busted = True
+                self._score_announced = True  # Prevent takeout from announcing score
                 await self._trigger_event("busted")
                 await self._broadcast_caller("busted")
-                logger.info(f"Board '{self.name}' STATE: Bust detected -> caller: busted (no score)")
             elif round_score >= 0:
-                # ── Normal turn: announce round score ──
-                # Trigger LED effect for the score
+                self._score_announced = True  # Mark as announced
+                # LED effects for score range
                 events = self._map_events("turn-score", {"points": round_score})
                 if events:
                     for ev in events:
                         mapping = self.event_mappings.get(ev)
                         if mapping and mapping.get("enabled", True):
                             await self._trigger_event(ev)
-                
                 # Caller: announce score immediately
                 await self._broadcast_caller("player_change", {"round_score": round_score})
-                logger.info(f"Board '{self.name}' STATE: Turn ended player {prev_player} -> score {round_score}")
+                logger.info(f"Board '{self.name}' STATE: Score {round_score} angesagt (player {prev_player})")
             
-            # Reset turn tracking for next turn
             self._turn_score = 0
-            self._busted = False
         
         # ── Detect checkout possible ──
-        if not game_finished and game_scores and player_index >= 0 and player_index < len(game_scores):
+        if (not game_finished and game_scores 
+                and player_index >= 0 and player_index < len(game_scores)):
             remaining = game_scores[player_index]
             if 2 <= remaining <= 170:
-                # Only announce once per turn start (when player changes to this player)
                 if player_index != self._last_player_index and self._last_player_index >= 0:
                     await self._broadcast_caller("checkout_possible", {"rest": remaining, "remaining": remaining})
+                    # Also trigger LED checkout event
+                    checkout_events = self._map_events("checkout-possible", {"remaining": remaining})
+                    if checkout_events:
+                        for ev in checkout_events:
+                            await self._trigger_event(ev)
         
-        # ── Update tracking state ──
+        # ── Update tracking ──
         if player_index >= 0:
             self._last_player_index = player_index
         if game_scores:
-            self._last_scores = list(game_scores)  # Copy!
+            self._last_scores = list(game_scores)
 
     async def _dispatch_events(self, event_type: str, events: list):
         """Dispatch mapped events based on event type logic."""
