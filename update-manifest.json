@@ -1,7 +1,7 @@
 {
-    "version": "1.2.0",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.2.0/throwsync-v1.2.0.zip",
-    "changelog": "# v1.2.0 - Caller Test-Center\n\n- 🧪 **Caller Test-Center** — Simuliere Würfe, Scores, Checkout und komplette Legs\n- 🔁 **Leg-Simulation** — Automatische Spielsequenz mit realistischen Pausen\n- 🎙️ Caller System mit 512 Sound-Events\n- 🔄 Auto-Update System\n- 🔧 Bugfixes und Performance-Verbesserungen",
+    "version": "1.2.1",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.2.1/throwsync-v1.2.1.zip",
+    "changelog": "# v1.2.1\n\n- 🔧 **Auth-Fix** — Login mit Benutzername statt E-Mail (wie auf autodarts.io)\n- 🧪 Caller Test-Center\n- 🔄 Auto-Update System",
     "size": 0,
     "min_python": "3.8",
     "released": "2026-02-16"

@@ -35,7 +35,7 @@ class AutodartsBoardConnection:
         self.name = board_config.get("name", f"Board {self.board_id[:8]}")
         self.assigned_devices = board_config.get("assigned_devices", [])
         self.enabled = board_config.get("enabled", True)
-        self.account_email = board_config.get("account_email", "")
+        self.account_username = board_config.get("account_username", "") or board_config.get("account_email", "")
         self.account_password = board_config.get("account_password", "")
 
         # Legacy: if api_key is set but no password, keep old behavior hint
@@ -59,8 +59,8 @@ class AutodartsBoardConnection:
 
     async def _get_keycloak_token(self) -> bool:
         """Authenticate with Autodarts Keycloak and get access token."""
-        if not self.account_email or not self.account_password:
-            logger.error(f"Board '{self.name}': E-Mail oder Passwort fehlt")
+        if not self.account_username or not self.account_password:
+            logger.error(f"Board '{self.name}': Benutzername oder Passwort fehlt")
             return False
 
         try:
@@ -70,7 +70,7 @@ class AutodartsBoardConnection:
                     "client_secret": self.KEYCLOAK_CLIENT_SECRET,
                     "scope": "openid",
                     "grant_type": "password",
-                    "username": self.account_email,
+                    "username": self.account_username,
                     "password": self.account_password,
                 }
                 async with session.post(self.KEYCLOAK_TOKEN_URL, data=data) as resp:
@@ -136,8 +136,8 @@ class AutodartsBoardConnection:
 
     async def connect(self):
         """Connect to this board's Autodarts WebSocket via Keycloak auth."""
-        if not self.account_email or not self.account_password:
-            logger.warning(f"Board '{self.name}': E-Mail oder Passwort fehlt")
+        if not self.account_username or not self.account_password:
+            logger.warning(f"Board '{self.name}': Benutzername oder Passwort fehlt")
             return
 
         if not self.enabled:
@@ -752,7 +752,7 @@ class AutodartsBoardConnection:
         return {
             "board_id": self.board_id,
             "name": self.name,
-            "account_email": self.account_email,
+            "account_username": self.account_username,
             "assigned_devices": self.assigned_devices,
             "enabled": self.enabled,
             "connected": self.connected,
@@ -849,7 +849,7 @@ class AutodartsClient:
             result.append({
                 "board_id": bid,
                 "name": bc.get("name", ""),
-                "account_email": bc.get("account_email", ""),
+                "account_username": bc.get("account_username", "") or bc.get("account_email", ""),
                 "assigned_devices": bc.get("assigned_devices", []),
                 "enabled": bc.get("enabled", True),
                 "auto_reconnect": bc.get("auto_reconnect", True),

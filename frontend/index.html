@@ -957,7 +957,7 @@ function SetupWizard({ onClose, onAddDevice }) {
                 { id: 'add_device', label: 'IP-Adresse in dieses Programm eingeben', hint: null },
                 { id: 'set_name', label: 'Einen Namen vergeben (z.B. "Wohnzimmer Board")', hint: null },
                 { id: 'set_leds', label: 'LED-Anzahl eingeben (gleiche Zahl wie in WLED!)', hint: null },
-                { id: 'assign_board', label: 'Unter "Autodarts" → Board anlegen → Gerät zuweisen', hint: 'Board ID findest du auf autodarts.io → My Boards. Nutze deine Autodarts E-Mail + Passwort zum Einloggen.' },
+                { id: 'assign_board', label: 'Unter "Autodarts" → Board anlegen → Gerät zuweisen', hint: 'Board ID findest du auf autodarts.io → My Boards. Nutze deinen Autodarts Benutzernamen + Passwort zum Einloggen.' },
                 { id: 'test_events', label: 'Unter "Events & Effekte" → einen Event testen (▶ Button)', hint: 'Wenn die LEDs reagieren: Alles richtig! 🎉' },
             ]
         },
@@ -1723,7 +1723,7 @@ function AutodartsPage({ autodartsConnected, devices }) {
     const [formName, setFormName] = useState('');
     const [formBoardId, setFormBoardId] = useState('');
     const [formPassword, setFormPassword] = useState('');
-    const [formEmail, setFormEmail] = useState('');
+    const [formUser, setFormUser] = useState('');
     const [formDevices, setFormDevices] = useState([]);
     const [formEnabled, setFormEnabled] = useState(true);
     const [formAutoReconnect, setFormAutoReconnect] = useState(true);
@@ -1740,7 +1740,7 @@ function AutodartsPage({ autodartsConnected, devices }) {
 
     const resetForm = () => {
         setFormName(''); setFormBoardId('');
-        setFormPassword(''); setFormEmail(''); setFormDevices([]);
+        setFormPassword(''); setFormUser(''); setFormDevices([]);
         setFormEnabled(true); setFormAutoReconnect(true);
         setEditBoard(null); setEditPasswordSet(false);
     };
@@ -1749,7 +1749,7 @@ function AutodartsPage({ autodartsConnected, devices }) {
         setFormName(board.name);
         setFormBoardId(board.board_id);
         setFormPassword('');
-        setFormEmail(board.account_email || '');
+        setFormUser(board.account_username || board.account_email || '');
         setFormDevices(board.assigned_devices || []);
         setFormEnabled(board.enabled);
         setFormAutoReconnect(board.auto_reconnect !== false);
@@ -1760,11 +1760,11 @@ function AutodartsPage({ autodartsConnected, devices }) {
 
     const saveBoard = async () => {
         if (!formBoardId) { toast('Board ID erforderlich', 'error'); return; }
-        if (!editBoard && (!formEmail || !formPassword)) { toast('E-Mail und Passwort erforderlich', 'error'); return; }
+        if (!editBoard && (!formUser || !formPassword)) { toast('Benutzername und Passwort erforderlich', 'error'); return; }
         const payload = {
             board_id: formBoardId,
             name: formName || `Board ${formBoardId.slice(0,8)}`,
-            account_email: formEmail,
+            account_username: formUser,
             account_password: formPassword,
             assigned_devices: formDevices,
             enabled: formEnabled,
@@ -1876,16 +1876,16 @@ function AutodartsPage({ autodartsConnected, devices }) {
                                             </span>
                                         </div>
 
-                                        {board.account_email && (
+                                        {(board.account_username || board.account_email) && (
                                             <div style={{fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4}}>
-                                                👤 {board.account_email}
+                                                👤 {board.account_username || board.account_email}
                                                 {board.authenticated && <span style={{color: 'var(--success)', marginLeft: 8}}>✓ Auth</span>}
                                                 {board.password_set ? <span style={{color: 'var(--success)', marginLeft: 8}}>🔑</span> : <span style={{color: 'var(--danger)', marginLeft: 8}}>⚠ Kein Passwort</span>}
                                             </div>
                                         )}
-                                        {!board.account_email && (
+                                        {!board.account_username && !board.account_email && (
                                             <div style={{fontSize: 13, color: 'var(--danger)', marginBottom: 4}}>
-                                                ⚠ E-Mail + Passwort nicht konfiguriert
+                                                ⚠ Benutzername + Passwort nicht konfiguriert
                                             </div>
                                         )}
 
@@ -1961,9 +1961,9 @@ function AutodartsPage({ autodartsConnected, devices }) {
                                     style={{fontFamily: 'JetBrains Mono', fontSize: 13}} />
                             </div>
                             <div className="input-group">
-                                <label>Account E-Mail *</label>
-                                <input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)}
-                                    placeholder="Deine autodarts.io E-Mail-Adresse" />
+                                <label>Autodarts Benutzername *</label>
+                                <input type="text" value={formUser} onChange={e => setFormUser(e.target.value)}
+                                    placeholder="Dein autodarts.io Benutzername" />
                             </div>
                             <div className="input-group">
                                 <label>Account Passwort *</label>
@@ -2086,7 +2086,7 @@ function AutodartsPage({ autodartsConnected, devices }) {
                 </div>
                 <div style={{fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.8}}>
                     <p><strong>1.</strong> Füge unter <strong>"Geräte"</strong> deine WLED-Controller (Gledopto, ESP32, ESP8266) per IP hinzu</p>
-                    <p><strong>2.</strong> Erstelle hier ein Board pro Autodarts-Board (mit Board ID + E-Mail + Passwort deines autodarts.io Accounts)</p>
+                    <p><strong>2.</strong> Erstelle hier ein Board pro Autodarts-Board (mit Board ID + Benutzername + Passwort deines autodarts.io Accounts)</p>
                     <p><strong>3.</strong> Weise jedem Board die gewuenschten WLED-Geraete zu → <em>Board A → Controller am Board A, Board B → Controller am Board B</em></p>
                     <p><strong>4.</strong> Konfiguriere unter <strong>"Events & Effekte"</strong> die LED-Animationen</p>
                     <p><strong>5.</strong> Klicke "Alle verbinden" — fertig! Jedes Board steuert nur seine eigenen LEDs</p>

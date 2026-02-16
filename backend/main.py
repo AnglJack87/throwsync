@@ -162,7 +162,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.2.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.2.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -357,7 +357,7 @@ async def get_boards():
 @app.post("/api/autodarts/boards")
 async def add_board(data: dict):
     """Add or update a board configuration."""
-    logger.info(f"Board speichern: keys={list(data.keys())}, board_id={data.get('board_id','?')}, email={data.get('account_email','?')}, pw_len={len(data.get('account_password',''))}")
+    logger.info(f"Board speichern: keys={list(data.keys())}, board_id={data.get('board_id','?')}, user={data.get('account_username','?')}, pw_len={len(data.get('account_password',''))}")
     boards = config_manager.get("boards", [])
     board_id = data.get("board_id", "")
     if not board_id:
@@ -374,7 +374,7 @@ async def add_board(data: dict):
     board_config = {
         "board_id": board_id,
         "name": data.get("name", f"Board {board_id[:8]}"),
-        "account_email": data.get("account_email", ""),
+        "account_username": data.get("account_username", "") or data.get("account_email", ""),
         "account_password": new_password,
         "assigned_devices": data.get("assigned_devices", []),
         "enabled": data.get("enabled", True),
