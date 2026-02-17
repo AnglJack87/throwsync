@@ -169,9 +169,9 @@ def build():
 
 def main():
     print()
-    print("  ┌──────────────────────────────────┐")
-    print("  │   ThrowSync — Binary Builder      │")
-    print("  └──────────────────────────────────┘")
+    print("  +----------------------------------+")
+    print("  |   ThrowSync - Binary Builder      |")
+    print("  +----------------------------------+")
     print()
 
     if not check_pyinstaller():

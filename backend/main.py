@@ -172,7 +172,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.5.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.5.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1626,10 +1626,10 @@ def main():
     version = get_app_version()
 
     print()
-    print("  ┌──────────────────────────────────┐")
-    print(f"  │   THROWSYNC v{version:<20s}│")
-    print("  │   WLED + Autodarts + Caller       │")
-    print("  └──────────────────────────────────┘")
+    print("  +----------------------------------+")
+    print(f"  |   THROWSYNC v{version:<20s}|")
+    print("  |   WLED + Autodarts + Caller       |")
+    print("  +----------------------------------+")
     print()
 
     if FROZEN:
