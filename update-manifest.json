@@ -1,8 +1,8 @@
 {
-    "version": "1.3.1",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.3.1/throwsync-v1.3.1.zip",
-    "changelog": "# v1.3.1\n\n- 🔧 **Caller Fix** — Score-Ansage funktioniert wieder zuverlässig (Fallback-System)\n- 🔇 **Bust-Fix** — Bei Überwerfen nur 'Busted', kein Score\n- ⚡ **Sofortige Ansage** — Score wird über Match-State erkannt, Fallback über Takeout\n- 👥 **Gegner-Tracking** — Effekte und Caller für alle Spielerwechsel\n- 🎯 **Checkout** — Automatische Ansage + LED-Effekt bei Checkout-Möglichkeit\n- 🔍 **LED Preview** — Zeigt an ob Effekt simuliert oder angenähert wird\n- 🐧 **Linux Update-Fix** — urllib Fallback für GitHub-Downloads",
+    "version": "1.3.2",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.3.2/throwsync-v1.3.2.zip",
+    "changelog": "# v1.3.2\n\n- 🟢 **Turn-Anzeige** — Grünes Band wenn du dran bist, gedimmt wenn Gegner wirft\n- 🔧 **Caller-Fix** — Score-Ansage zuverlässig über Takeout (kein fragiles Match-State-Parsing)\n- 🔇 **Bust-Erkennung** — Bei Überwerfen nur 'Busted', kein Score\n- 🔍 **Debug-Logging** — Match-State wird vollständig geloggt zur Analyse\n- 🎨 **LED Preview** — Alle 103 WLED-Effekte implementiert\n- 🐧 **Linux Update-Fix** — urllib Fallback für GitHub-Downloads",
     "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-16"
+    "released": "2026-02-17"
 }

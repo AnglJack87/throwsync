@@ -202,6 +202,16 @@ DEFAULT_EVENT_MAPPINGS = {
         "effect": {"fx": 3, "sx": 200, "col": [[0, 100, 255]], "bri": 150},
         "duration": 2.0, "enabled": True,
     },
+    "my_turn": {
+        "label": "Ich bin dran (mein Wurf)", "category": "turn",
+        "effect": {"fx": 0, "col": [[0, 255, 0]], "bri": 120},
+        "duration": 0, "enabled": True,
+    },
+    "opponent_turn": {
+        "label": "Gegner ist dran (warten)", "category": "turn",
+        "effect": {"fx": 0, "col": [[30, 30, 30]], "bri": 40},
+        "duration": 0, "enabled": True,
+    },
     "next_throw": {
         "label": "Bereit für nächsten Wurf", "category": "turn",
         "effect": {"fx": 0, "col": [[100, 100, 100]], "bri": 100},
