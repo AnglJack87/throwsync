@@ -34,15 +34,21 @@ except ImportError:
 logger = logging.getLogger("updater")
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).parent.parent.resolve()
-VERSION_FILE = PROJECT_ROOT / "VERSION"
+try:
+    from paths import BUNDLE_DIR, DATA_DIR, VERSION_FILE as _PATHS_VERSION
+    PROJECT_ROOT = BUNDLE_DIR
+    VERSION_FILE = _PATHS_VERSION
+except ImportError:
+    PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+    VERSION_FILE = PROJECT_ROOT / "VERSION"
+
 STAGING_DIR = PROJECT_ROOT / "_update_staging"
 BACKUP_DIR = PROJECT_ROOT / "_update_backup"
 RESTART_FLAG = PROJECT_ROOT / ".restart"
 UPDATE_LOCK = PROJECT_ROOT / ".updating"
 
 # Default manifest URL — override in config
-DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/throwsync/throwsync/main/update-manifest.json"
+DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/AnglJack87/throwsync/main/update-manifest.json"
 
 # Files/dirs to NEVER overwrite during update (user data)
 PRESERVE_PATHS = {
@@ -69,8 +75,11 @@ KEEP_PATHS = {
 def get_local_version() -> str:
     """Read current installed version."""
     try:
-        return VERSION_FILE.read_text().strip()
-    except Exception:
+        ver = VERSION_FILE.read_text().strip()
+        logger.debug(f"Version from {VERSION_FILE}: {ver}")
+        return ver
+    except Exception as e:
+        logger.warning(f"Could not read VERSION from {VERSION_FILE}: {e}")
         return "0.0.0"
 
 

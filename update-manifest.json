@@ -1,7 +1,13 @@
 {
-    "version": "1.5.0",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.5.0/throwsync-v1.5.0.zip",
-    "changelog": "# v1.5.0\n\n- 🔒 **Binary-Distribution** — PyInstaller kompiliert zu .exe/.bin (kein lesbarer Code)\n- 🏗 **Build-System** — build.py für lokale Builds auf jeder Plattform\n- 🤖 **GitHub Actions CI/CD** — Automatische Builds für Linux/Windows/Mac bei Release\n- 📁 **Zentrale Pfade** — paths.py löst Pfade für Binary + Dev-Modus korrekt auf\n- 📜 Source Available Lizenz + Pay-What-You-Want Spenden-Modell",
+    "version": "1.5.3",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.5.3/throwsync-v1.5.3.zip",
+    "downloads": {
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v1.5.3/throwsync-v1.5.3.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.5.3/throwsync-1.5.3-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.5.3/throwsync-1.5.3-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v1.5.3/throwsync-1.5.3-macos-arm64"
+    },
+    "changelog": "# v1.5.3\n\n- Fix: Manifest-URL korrigiert (404 behoben)\n- Fix: Version '0.0.0' behoben\n- Binary-Distribution fuer Linux, Windows, Mac",
     "size": 0,
     "min_python": "3.8",
     "released": "2026-02-17"
