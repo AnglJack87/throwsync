@@ -205,4 +205,37 @@ Vollständige API-Dokumentation unter: `http://localhost:8420/docs`
 
 ## 📝 Lizenz
 
-MIT License — Frei nutzbar, veränderbar, verteilbar.
+**Source Available — Pay What You Want**
+
+ThrowSync ist **kein** Open Source im klassischen Sinne. Der Quellcode ist öffentlich einsehbar, aber die Nutzung erfordert eine Spende in beliebiger Höhe.
+
+| ✅ Erlaubt | ❌ Nicht erlaubt |
+|---|---|
+| Code lesen & lernen | Weiterverkaufen |
+| Privat nutzen (nach Spende) | Forks veröffentlichen |
+| Bugs melden & Features vorschlagen | Umverpacken & redistribuieren |
+| Link zum Repo teilen | Copyright/Lizenz entfernen |
+
+Vollständige Lizenz: [LICENSE](LICENSE)
+
+---
+
+## ☕ Unterstütze ThrowSync
+
+Wenn dir ThrowSync gefällt, unterstütze die Entwicklung mit einer Spende — jeder Betrag zählt!
+
+<!-- Trage hier deine Links ein: -->
+- 💰 **PayPal**: [paypal.me/DEIN_LINK](https://paypal.me/)
+- ☕ **Buy Me A Coffee**: [buymeacoffee.com/DEIN_LINK](https://buymeacoffee.com/)
+- ⭐ **GitHub Sponsors**: [github.com/sponsors/AnglJack87](https://github.com/sponsors/AnglJack87)
+
+Deine Spende = deine Lizenz. Kein Mindestbetrag. Fair use. 🎯
+
+---
+
+## 📬 Kontakt
+
+- **GitHub**: [github.com/AnglJack87/throwsync](https://github.com/AnglJack87/throwsync)
+- **Issues**: [Bug melden oder Feature wünschen](https://github.com/AnglJack87/throwsync/issues)
+- **Kommerzielle Anfragen**: Via GitHub kontaktieren
+

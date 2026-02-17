@@ -1,0 +1,95 @@
+ThrowSync — Source Available License (v1.0)
+
+Copyright (c) 2026 AnglJack87. All rights reserved.
+
+────────────────────────────────────────────────────────────────
+
+TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+   "Software" refers to ThrowSync and all associated source code,
+   documentation, assets, and configuration files.
+
+   "Author" refers to AnglJack87, the original creator of the Software.
+
+   "Donation" refers to a voluntary financial contribution of any amount
+   to the Author via the designated donation channels.
+
+2. SOURCE CODE VISIBILITY
+
+   The source code of this Software is publicly visible for transparency,
+   education, and community trust. Public visibility does NOT grant
+   unrestricted usage rights.
+
+3. PERMITTED USE
+
+   You MAY:
+   a) View, read, and study the source code.
+   b) Use the Software for personal, non-commercial purposes
+      PROVIDED you have made a donation of any amount (pay-what-you-want).
+   c) Report bugs, suggest features, and contribute improvements
+      back to the original repository.
+   d) Share links to the official repository.
+
+4. RESTRICTIONS
+
+   You MAY NOT:
+   a) Use the Software commercially (selling, licensing, offering as
+      a paid service, bundling with commercial products) without
+      explicit written permission from the Author.
+   b) Redistribute, republish, or repackage the Software or any
+      substantial portion of it — whether modified or unmodified —
+      without explicit written permission from the Author.
+   c) Create derivative works or forks for public distribution
+      without explicit written permission from the Author.
+   d) Remove, alter, or obscure this license notice, copyright
+      notices, or donation references from the Software.
+   e) Claim authorship of the Software or any substantial portion of it.
+   f) Use the Software's name, branding, or logo to imply endorsement.
+
+5. DONATIONS
+
+   This Software operates on a pay-what-you-want model.
+   A donation of any amount grants you a personal, non-transferable,
+   non-exclusive license to use the Software for non-commercial purposes.
+
+   Donation channels:
+   • PayPal:  [paypal.me link — to be configured by Author]
+   • GitHub Sponsors: [to be configured by Author]
+   • Buy Me A Coffee: [to be configured by Author]
+
+   There is no minimum amount. The Author trusts the community to
+   contribute fairly based on the value they receive.
+
+6. CONTRIBUTIONS
+
+   By submitting code, patches, or other contributions to the official
+   repository, you grant the Author a perpetual, worldwide, non-exclusive,
+   royalty-free license to use, modify, and distribute your contributions
+   as part of the Software under these same terms.
+
+7. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+   CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THE
+   SOFTWARE.
+
+8. TERMINATION
+
+   Your rights under this license terminate automatically if you
+   violate any of these terms. Upon termination, you must cease all
+   use and destroy all copies of the Software in your possession.
+
+9. GOVERNING LAW
+
+   This license shall be governed by and construed in accordance
+   with the laws of Germany (Bundesrepublik Deutschland).
+
+────────────────────────────────────────────────────────────────
+
+For commercial licensing inquiries or special permissions,
+contact the Author via GitHub: https://github.com/AnglJack87
