@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ThrowSync — Build Script
+ThrowSync - Build Script
 Creates a standalone binary using PyInstaller.
 
 Usage:
@@ -50,7 +50,7 @@ def check_pyinstaller():
         return True
     except ImportError:
         print("  PyInstaller nicht installiert!")
-        print("  → pip install pyinstaller")
+        print("  -> pip install pyinstaller")
         return False
 
 
@@ -145,15 +145,15 @@ def build():
     if binary_path.exists():
         size_mb = binary_path.stat().st_size / (1024 * 1024)
         print(f"\n  {'='*50}")
-        print(f"  ✓ Binary erstellt: {binary_path}")
-        print(f"  ✓ Größe: {size_mb:.1f} MB")
-        print(f"  ✓ Platform: {PLATFORM_TAG}")
+        print(f"  [OK] Binary erstellt: {binary_path}")
+        print(f"  [OK] Groesse: {size_mb:.1f} MB")
+        print(f"  [OK] Platform: {PLATFORM_TAG}")
 
         # Rename with platform tag for release
         release_name = f"throwsync-{version}-{PLATFORM_TAG}{'.exe' if SYSTEM == 'windows' else ''}"
         release_path = DIST_DIR / release_name
         shutil.copy2(binary_path, release_path)
-        print(f"  ✓ Release: {release_path}")
+        print(f"  [OK] Release: {release_path}")
 
         print(f"\n  Zum Starten:")
         if SYSTEM == "windows":
@@ -163,7 +163,7 @@ def build():
             print(f"    ./{release_name}")
         print(f"\n  Config/Sounds Ordner werden beim ersten Start neben dem Binary erstellt.")
     else:
-        print(f"\n  ✗ Build fehlgeschlagen! Binary nicht gefunden.")
+        print(f"\n  [FAIL] Build fehlgeschlagen! Binary nicht gefunden.")
         sys.exit(1)
 
 
