@@ -172,7 +172,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.4.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1494,7 +1494,7 @@ async def get_modules():
     boards = config_manager.get("boards", [])
     board_statuses = autodarts_client.get_all_boards_status()
     any_connected = autodarts_client.connected
-    devices = device_manager.get_all_devices()
+    devices = await device_manager.get_all_devices()
     online_devices = [d for d in devices if d.get("online")]
     events_cfg = config_manager.get("event_mappings_custom", {})
     merged_events = get_merged_events(events_cfg)
