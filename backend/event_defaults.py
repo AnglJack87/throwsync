@@ -2,6 +2,7 @@
 Default Event → LED Mappings for Autodarts.
 Standalone file with NO external dependencies — always importable.
 """
+MODULE_VERSION = "1.2.0"
 
 DEFAULT_EVENT_MAPPINGS = {
     # ═══════════════════════════════════════════════════════════════════

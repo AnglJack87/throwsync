@@ -3,6 +3,7 @@ Autodarts Client - Multi-Board Support
 Each board has its own WebSocket connection, credentials, and assigned ESP devices.
 Supports multiple Autodarts accounts simultaneously.
 """
+MODULE_VERSION = "1.4.0"
 
 import asyncio
 import json

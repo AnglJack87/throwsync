@@ -9,6 +9,8 @@ Update flow:
   4. On restart trigger: run.py loop swaps staging → live and restarts
 """
 
+MODULE_VERSION = "1.3.2"
+
 import asyncio
 import json
 import logging

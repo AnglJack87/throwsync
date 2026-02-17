@@ -3,6 +3,7 @@ Caller Sound Defaults — Every possible dart event gets its own sound slot.
 Sound playback happens in the browser via HTML5 Audio API.
 The backend broadcasts "play sound X" via WebSocket when events fire.
 """
+MODULE_VERSION = "1.3.0"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ALL CALLER SOUND EVENTS

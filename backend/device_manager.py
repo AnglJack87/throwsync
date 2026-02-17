@@ -1,6 +1,7 @@
 """
 Device Manager - Handles multiple WLED devices, discovery, and status tracking.
 """
+MODULE_VERSION = "1.2.0"
 
 import asyncio
 import logging

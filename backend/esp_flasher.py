@@ -6,6 +6,7 @@ Supports:
   - Firmware download from WLED GitHub releases
   - Chip detection and firmware validation
 """
+MODULE_VERSION = "1.1.0"
 
 import asyncio
 import logging

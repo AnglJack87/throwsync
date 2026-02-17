@@ -30,6 +30,16 @@ from updater import (
     get_update_status, get_local_version, cleanup as updater_cleanup,
     DEFAULT_MANIFEST_URL, rollback_update,
 )
+import time as _time
+
+# Module version imports
+from autodarts_client import MODULE_VERSION as AUTODARTS_VERSION
+from device_manager import MODULE_VERSION as DEVICE_MGR_VERSION
+from wled_client import MODULE_VERSION as WLED_VERSION
+from caller_defaults import MODULE_VERSION as CALLER_VERSION
+from event_defaults import MODULE_VERSION as EVENTS_VERSION
+from updater import MODULE_VERSION as UPDATER_VERSION
+from esp_flasher import MODULE_VERSION as FLASHER_VERSION
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("throwsync")
@@ -162,7 +172,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.3.3", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.4.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1473,6 +1483,128 @@ async def api_get_update_config():
         "auto_check": config_manager.get("update_auto_check", True),
         "auto_check_interval": config_manager.get("update_auto_check_interval", 3600),
     }
+
+
+# ─── Module System ───────────────────────────────────────────────────────────
+
+@app.get("/api/modules")
+async def get_modules():
+    """Get all modules with version, status, and description."""
+    caller_cfg = config_manager.get("caller_config", {})
+    boards = config_manager.get("boards", [])
+    board_statuses = autodarts_client.get_all_boards_status()
+    any_connected = autodarts_client.connected
+    devices = device_manager.get_all_devices()
+    online_devices = [d for d in devices if d.get("online")]
+    events_cfg = config_manager.get("event_mappings_custom", {})
+    merged_events = get_merged_events(events_cfg)
+    enabled_events = sum(1 for e in merged_events.values() if e.get("enabled"))
+
+    return {"modules": [
+        {
+            "id": "autodarts",
+            "name": "Autodarts Connector",
+            "icon": "◎",
+            "version": AUTODARTS_VERSION,
+            "description": "WebSocket-Verbindung zu Autodarts Boards",
+            "running": any_connected,
+            "can_toggle": True,
+            "detail": f"{len([b for b in board_statuses if b.get('connected')])}/"
+                      f"{len(boards)} Boards verbunden",
+        },
+        {
+            "id": "wled",
+            "name": "WLED Controller",
+            "icon": "◆",
+            "version": DEVICE_MGR_VERSION,
+            "sub_version": WLED_VERSION,
+            "description": "LED-Strip Steuerung über WLED-Geräte",
+            "running": len(online_devices) > 0,
+            "can_toggle": True,
+            "detail": f"{len(online_devices)}/{len(devices)} Geräte online",
+        },
+        {
+            "id": "caller",
+            "name": "Caller System",
+            "icon": "🎙",
+            "version": CALLER_VERSION,
+            "description": "Score-Ansagen und Sound-Effekte",
+            "running": caller_cfg.get("enabled", False),
+            "can_toggle": True,
+            "detail": "Aktiv" if caller_cfg.get("enabled", False) else "Deaktiviert",
+        },
+        {
+            "id": "events",
+            "name": "LED Event-Trigger",
+            "icon": "⚡",
+            "version": EVENTS_VERSION,
+            "description": "Dart-Events → LED-Effekte zuordnen",
+            "running": any_connected and enabled_events > 0,
+            "can_toggle": False,
+            "detail": f"{enabled_events} Events aktiv",
+        },
+        {
+            "id": "updater",
+            "name": "Auto-Updater",
+            "icon": "🔄",
+            "version": UPDATER_VERSION,
+            "description": "Automatische Updates von GitHub",
+            "running": config_manager.get("update_auto_check", True),
+            "can_toggle": True,
+            "detail": f"v{get_local_version()} installiert",
+        },
+        {
+            "id": "flasher",
+            "name": "Firmware Flasher",
+            "icon": "↯",
+            "version": FLASHER_VERSION,
+            "description": "WLED Firmware auf ESP flashen",
+            "running": True,
+            "can_toggle": False,
+            "detail": "Bereit",
+        },
+    ]}
+
+
+@app.post("/api/modules/{module_id}/toggle")
+async def toggle_module(module_id: str):
+    """Start or stop a module."""
+    if module_id == "autodarts":
+        if autodarts_client.connected:
+            await autodarts_client.disconnect()
+            return {"running": False, "detail": "Getrennt"}
+        else:
+            boards = config_manager.get("boards", [])
+            if not boards:
+                raise HTTPException(400, "Keine Boards konfiguriert")
+            asyncio.create_task(autodarts_client.connect_all())
+            return {"running": True, "detail": "Verbinde..."}
+
+    elif module_id == "wled":
+        # Toggle device manager polling
+        if device_manager._poll_task and not device_manager._poll_task.done():
+            await device_manager.stop()
+            return {"running": False, "detail": "Gestoppt"}
+        else:
+            await device_manager.start()
+            return {"running": True, "detail": "Gestartet"}
+
+    elif module_id == "caller":
+        caller_cfg = config_manager.get("caller_config", {})
+        new_state = not caller_cfg.get("enabled", False)
+        caller_cfg["enabled"] = new_state
+        config_manager.set("caller_config", caller_cfg)
+        config_manager.save()
+        return {"running": new_state, "detail": "Aktiv" if new_state else "Deaktiviert"}
+
+    elif module_id == "updater":
+        new_state = not config_manager.get("update_auto_check", True)
+        config_manager.set("update_auto_check", new_state)
+        config_manager.save()
+        return {"running": new_state, "detail": "Auto-Check aktiv" if new_state else "Deaktiviert"}
+
+    else:
+        raise HTTPException(400, f"Modul '{module_id}' kann nicht umgeschaltet werden")
 
 
 # ─── Serve Frontend ───────────────────────────────────────────────────────────

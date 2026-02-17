@@ -1,7 +1,7 @@
 {
-    "version": "1.3.3",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.3.3/throwsync-v1.3.3.zip",
-    "changelog": "# v1.3.3\n\n- ⚡ **Sofortige Score-Ansage** — Nach dem 3. Dart sofort ansagen (nicht erst beim Pfeilziehen)\n- 🔇 **Bust-Fix** — Match-State erkennt Bust in <400ms, nur 'Busted' statt Score\n- 🎯 **Checkout-Ansage** — Automatische Ansage wenn Checkout möglich\n- 🟢 Turn-Anzeige (grün=dran, dimm=Gegner)\n- 🎨 Alle 103 WLED-Effekte in LED Preview\n- 🐧 Linux Update-Fix (urllib Fallback)",
+    "version": "1.4.0",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.4.0/throwsync-v1.4.0.zip",
+    "changelog": "# v1.4.0\n\n- 📦 **Modul-System** — Übersichtseite mit Start/Stop für alle Module\n- 🔢 **Modul-Versionen** — Jedes Modul hat eigene Versionsnummer\n- ⚡ **Events & Caller zusammen** — LED-Effekte + Sounds in einem Tab-View\n- 🎯 **Kompaktes Design** — Event-Liste als schmale Rows statt große Cards\n- ⚡ **Sofortige Score-Ansage** — 3-Dart-Trigger mit 400ms Bust-Erkennung\n- 🔇 **Bust-Fix** — Match-State cancelt Score, sagt nur 'Busted'\n- 🎨 Alle 103 WLED-Effekte in LED Preview\n- 🐧 Linux Update-Fix (urllib Fallback)",
     "size": 0,
     "min_python": "3.8",
     "released": "2026-02-17"

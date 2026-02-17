@@ -764,14 +764,13 @@ function useWebSocket() {
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
-function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount }) {
+function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, version }) {
     const pages = [
-        { id: 'dashboard', icon: '◈', label: 'Dashboard' },
-        { id: 'devices', icon: '⬡', label: 'Geraete' },
+        { id: 'dashboard', icon: '◈', label: 'Module' },
+        { id: 'devices', icon: '⬡', label: 'Geräte' },
         { id: 'leds', icon: '◆', label: 'LED Kontrolle' },
         { id: 'autodarts', icon: '◎', label: 'Autodarts' },
-        { id: 'events', icon: '⚡', label: 'Events' },
-        { id: 'caller', icon: '🎙', label: 'Caller' },
+        { id: 'events', icon: '⚡', label: 'Events & Caller' },
         { id: 'flash', icon: '↯', label: 'Firmware' },
         { id: 'presets', icon: '★', label: 'Presets' },
         { id: 'settings', icon: '⚙', label: 'Einstellungen' },
@@ -780,8 +779,8 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount }) {
     return (
         <div className="sidebar">
             <div className="sidebar-logo">
-                <h1>AUTODARTS<br/>LED MANAGER</h1>
-                <div className="version">v1.0.0</div>
+                <h1>THROW<br/>SYNC</h1>
+                <div className="version">v{version || '...'}</div>
             </div>
 
             <div className="nav-section">Navigation</div>
@@ -813,75 +812,102 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount }) {
 // ─── Dashboard Page ──────────────────────────────────────────────────────────
 
 function DashboardPage({ devices, autodartsConnected }) {
+    const [modules, setModules] = useState([]);
+    const [toggling, setToggling] = useState(null);
+    const toast = useToast();
+
+    const loadModules = () => API.get('/api/modules').then(d => { if (d?.modules) setModules(d.modules); });
+    useEffect(() => { loadModules(); const iv = setInterval(loadModules, 5000); return () => clearInterval(iv); }, []);
+
+    const toggle = async (id) => {
+        setToggling(id);
+        const res = await API.post(`/api/modules/${id}/toggle`);
+        if (res) toast(`${id}: ${res.detail}`, 'success');
+        await loadModules();
+        setToggling(null);
+    };
+
     const onlineCount = devices.filter(d => d.online).length;
     const totalLeds = devices.reduce((sum, d) => sum + (d.led_count || 0), 0);
 
     return (
         <div>
             <div className="page-header">
-                <h2>Dashboard</h2>
-                <p>Übersicht deiner LED-Installation</p>
+                <h2>Module & Status</h2>
+                <p>Alle ThrowSync-Module auf einen Blick — starten, stoppen, Versionen prüfen</p>
             </div>
 
-            <div className="grid-4" style={{marginBottom: 28}}>
+            {/* Quick Stats */}
+            <div className="grid-4" style={{marginBottom: 24}}>
                 {[
-                    { label: 'Geräte online', value: `${onlineCount}/${devices.length}`, color: 'var(--success)' },
-                    { label: 'LEDs gesamt', value: totalLeds, color: 'var(--accent-bright)' },
-                    { label: 'Autodarts', value: autodartsConnected ? 'Verbunden' : 'Getrennt', color: autodartsConnected ? 'var(--success)' : 'var(--danger)' },
-                    { label: 'Events aktiv', value: '—', color: 'var(--info)' },
+                    { label: 'Geräte', value: `${onlineCount}/${devices.length}`, color: 'var(--success)' },
+                    { label: 'LEDs', value: totalLeds, color: 'var(--accent-bright)' },
+                    { label: 'Autodarts', value: autodartsConnected ? 'Live' : 'Aus', color: autodartsConnected ? 'var(--success)' : 'var(--danger)' },
+                    { label: 'Module', value: `${modules.filter(m => m.running).length}/${modules.length}`, color: 'var(--info)' },
                 ].map((s, i) => (
-                    <div key={i} className="card" style={{textAlign: 'center'}}>
-                        <div style={{fontSize: 32, fontWeight: 700, color: s.color, fontFamily: 'JetBrains Mono'}}>{s.value}</div>
-                        <div style={{fontSize: 12, color: 'var(--text-dim)', marginTop: 6, textTransform: 'uppercase', letterSpacing: 1}}>{s.label}</div>
+                    <div key={i} className="card" style={{textAlign: 'center', padding: '16px 12px'}}>
+                        <div style={{fontSize: 26, fontWeight: 700, color: s.color, fontFamily: 'JetBrains Mono'}}>{s.value}</div>
+                        <div style={{fontSize: 11, color: 'var(--text-dim)', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1}}>{s.label}</div>
                     </div>
                 ))}
             </div>
 
-            <div className="grid-2">
-                <div className="card">
-                    <div className="card-header">
-                        <span className="card-title">Geräte</span>
-                    </div>
-                    {devices.length === 0 ? (
-                        <p style={{color: 'var(--text-dim)', fontSize: 14}}>Noch keine Geräte hinzugefügt. Gehe zu "Geräte" um zu starten.</p>
-                    ) : devices.map(d => (
-                        <div key={d.id} style={{display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)'}}>
-                            <span className={`status-dot ${d.online ? 'online' : 'offline'}`}></span>
-                            <div style={{flex: 1}}>
-                                <div style={{fontWeight: 600, fontSize: 14}}>{d.name}</div>
-                                <div style={{fontSize: 12, color: 'var(--text-dim)', fontFamily: 'JetBrains Mono'}}>{d.ip}</div>
+            {/* Module Cards */}
+            <div style={{display: 'grid', gap: 10}}>
+                {modules.map(m => (
+                    <div key={m.id} className="card" style={{
+                        padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14,
+                        borderLeft: `3px solid ${m.running ? 'var(--success)' : 'var(--border)'}`,
+                        opacity: m.running ? 1 : 0.7,
+                    }}>
+                        <span style={{fontSize: 22, width: 32, textAlign: 'center'}}>{m.icon}</span>
+                        <div style={{flex: 1, minWidth: 0}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
+                                <span style={{fontWeight: 700, fontSize: 14}}>{m.name}</span>
+                                <span style={{
+                                    fontSize: 10, fontFamily: 'JetBrains Mono', padding: '1px 6px',
+                                    background: 'rgba(108,92,231,0.15)', borderRadius: 4, color: 'var(--accent-bright)',
+                                }}>v{m.version}</span>
+                                <span className={`badge ${m.running ? 'badge-success' : 'badge-danger'}`} style={{fontSize: 10}}>
+                                    {m.running ? 'Aktiv' : 'Aus'}
+                                </span>
                             </div>
-                            <span className={`badge ${d.online ? 'badge-success' : 'badge-danger'}`}>
-                                {d.online ? 'Online' : 'Offline'}
-                            </span>
+                            <div style={{fontSize: 12, color: 'var(--text-dim)', marginTop: 2}}>
+                                {m.description} — <span style={{color: 'var(--text-secondary)'}}>{m.detail}</span>
+                            </div>
                         </div>
-                    ))}
-                </div>
-
-                <div className="card">
-                    <div className="card-header">
-                        <span className="card-title">Schnellsteuerung</span>
-                    </div>
-                    <div style={{display: 'flex', gap: 10, flexWrap: 'wrap'}}>
-                        <button className="btn btn-success" onClick={() => API.post('/api/devices/all/state', {on: true})}>💡 Alle An</button>
-                        <button className="btn btn-danger" onClick={() => API.post('/api/devices/all/state', {on: false})}>Alle Aus</button>
-                        {[
-                            {color: '#ff0000', label: 'Rot'},
-                            {color: '#00ff00', label: 'Grün'},
-                            {color: '#0000ff', label: 'Blau'},
-                            {color: '#ffffff', label: 'Weiß'},
-                            {color: '#ff6600', label: 'Orange'},
-                        ].map(c => (
-                            <button key={c.color} className="btn" style={{borderColor: c.color}}
-                                onClick={() => {
-                                    const [r,g,b] = [parseInt(c.color.slice(1,3),16), parseInt(c.color.slice(3,5),16), parseInt(c.color.slice(5,7),16)];
-                                    devices.forEach(d => API.post(`/api/devices/${d.id}/color`, {color: [r,g,b]}));
-                                }}>
-                                <span style={{width: 14, height: 14, borderRadius: 3, background: c.color, display: 'inline-block'}}></span>
-                                {c.label}
+                        {m.can_toggle && (
+                            <button
+                                className={`btn btn-sm ${m.running ? 'btn-danger' : 'btn-success'}`}
+                                style={{minWidth: 70, fontSize: 12}}
+                                disabled={toggling === m.id}
+                                onClick={() => toggle(m.id)}>
+                                {toggling === m.id ? '...' : m.running ? 'Stop' : 'Start'}
                             </button>
-                        ))}
+                        )}
                     </div>
+                ))}
+            </div>
+
+            {/* Quick Controls */}
+            <div className="card" style={{marginTop: 20, padding: '14px 18px'}}>
+                <div style={{fontWeight: 600, fontSize: 13, marginBottom: 10}}>Schnellsteuerung</div>
+                <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+                    <button className="btn btn-sm btn-success" onClick={() => API.post('/api/devices/all/state', {on: true})}>💡 Alle An</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => API.post('/api/devices/all/state', {on: false})}>Alle Aus</button>
+                    {[
+                        {color: '#ff0000', label: 'Rot'}, {color: '#00ff00', label: 'Grün'},
+                        {color: '#0000ff', label: 'Blau'}, {color: '#ffffff', label: 'Weiß'},
+                    ].map(c => (
+                        <button key={c.color} className="btn btn-sm" style={{borderColor: c.color}}
+                            onClick={() => {
+                                const [r,g,b] = [parseInt(c.color.slice(1,3),16), parseInt(c.color.slice(3,5),16), parseInt(c.color.slice(5,7),16)];
+                                devices.forEach(d => API.post(`/api/devices/${d.id}/color`, {color: [r,g,b]}));
+                            }}>
+                            <span style={{width: 10, height: 10, borderRadius: 2, background: c.color, display: 'inline-block', marginRight: 4}}></span>
+                            {c.label}
+                        </button>
+                    ))}
                 </div>
             </div>
         </div>
@@ -2107,15 +2133,13 @@ function EventsPage({ devices }) {
     const [filterEnabled, setFilterEnabled] = useState(false);
     const [loadError, setLoadError] = useState(false);
     const [loading, setLoading] = useState(true);
-    // Clipboard for copy/paste
     const [clipboard, setClipboard] = useState(null);
-    // Bulk edit mode
     const [bulkMode, setBulkMode] = useState(false);
     const [selected, setSelected] = useState(new Set());
     const [showBulkEdit, setShowBulkEdit] = useState(false);
-    // Event log
     const [showLog, setShowLog] = useState(false);
     const [eventLog, setEventLog] = useState([]);
+    const [activeTab, setActiveTab] = useState('led'); // 'led' or 'caller'
     const toast = useToast();
 
     useEffect(() => {
@@ -2260,9 +2284,29 @@ function EventsPage({ devices }) {
     return (
         <div>
             <div className="page-header">
-                <h2>Events & Effekte</h2>
-                <p>{enabledCount} von {totalCount} Triggern aktiv</p>
+                <h2>Events & Caller</h2>
+                <p>LED-Effekte und Sound-Ansagen konfigurieren</p>
             </div>
+
+            {/* Tab Switcher */}
+            <div style={{display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-secondary)', borderRadius: 8, padding: 3}}>
+                {[
+                    {id: 'led', label: '⚡ LED Effekte', count: `${enabledCount}/${totalCount}`},
+                    {id: 'caller', label: '🎙 Caller Sounds'},
+                ].map(tab => (
+                    <div key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                        flex: 1, padding: '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'center',
+                        fontSize: 13, fontWeight: 600, transition: 'all 0.15s',
+                        background: activeTab === tab.id ? 'var(--accent)' : 'transparent',
+                        color: activeTab === tab.id ? '#fff' : 'var(--text-dim)',
+                    }}>
+                        {tab.label} {tab.count && <span style={{fontSize: 11, opacity: 0.7}}>({tab.count})</span>}
+                    </div>
+                ))}
+            </div>
+
+            {/* LED Events Tab */}
+            {activeTab === 'led' && <>
 
             {/* Profile Bar */}
             <ProfileBar />
@@ -2430,62 +2474,41 @@ function EventsPage({ devices }) {
                         </div>
 
                         {isExpanded && (
-                            <div style={{display: 'grid', gap: 8}}>
+                            <div style={{display: 'grid', gap: 3}}>
                                 {filteredEvents.map(event => (
-                                    <div key={event.key} className="event-card" style={{
-                                        opacity: event.enabled ? 1 : 0.5,
-                                        borderColor: selected.has(event.key) ? 'var(--accent)' : undefined,
-                                        background: selected.has(event.key) ? 'rgba(108,92,231,0.08)' : undefined,
-                                    }}>
-                                        {/* Bulk checkbox */}
-                                        {bulkMode && (
-                                            <div onClick={() => toggleSelect(event.key)} style={{
-                                                width: 22, height: 22, borderRadius: 4, flexShrink: 0, cursor: 'pointer',
-                                                border: `2px solid ${selected.has(event.key) ? 'var(--accent)' : 'var(--border)'}`,
-                                                background: selected.has(event.key) ? 'var(--accent)' : 'transparent',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontSize: 12, color: 'white',
-                                            }}>
-                                                {selected.has(event.key) && '✓'}
-                                            </div>
-                                        )}
-                                        <div className="event-preview" style={{
-                                            background: event.effect?.col?.[0]
-                                                ? `rgb(${event.effect.col[0].join(',')})`
-                                                : 'var(--accent)',
-                                            color: 'white', minWidth: 42, height: 42, borderRadius: 8,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: 16, flexShrink: 0,
-                                        }}>
-                                            {meta.icon}
-                                        </div>
-                                        <div className="event-info" style={{flex: 1, minWidth: 0}}>
-                                            <h4 style={{fontSize: 14, margin: 0}}>{event.label || event.key}</h4>
-                                            <p style={{fontSize: 12, color: 'var(--text-dim)', margin: 0}}>
-                                                {WLED_EFFECTS[event.effect?.fx] || `FX #${event.effect?.fx ?? 0}`}
-                                                {' · BRI ' + (event.effect?.bri ?? 128)}
-                                                {event.duration > 0 ? ` · ${event.duration}s` : ' · dauerhaft'}
-                                                {event.chain?.length > 0 && ` · ⛓${event.chain.length} Schritte`}
-                                            </p>
-                                        </div>
-                                        <div style={{display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end'}}>
-                                            <div className={`toggle ${event.enabled ? 'active' : ''}`}
+                                    <div key={event.key} style={{
+                                        display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                                        background: selected.has(event.key) ? 'rgba(108,92,231,0.08)' : 'var(--bg-card)',
+                                        borderRadius: 6, border: `1px solid ${selected.has(event.key) ? 'var(--accent)' : 'var(--border)'}`,
+                                        opacity: event.enabled ? 1 : 0.4, fontSize: 13, cursor: 'pointer',
+                                        transition: 'opacity 0.15s',
+                                    }} onClick={() => bulkMode ? toggleSelect(event.key) : setEditEvent(event.key)}>
+                                        {/* Color dot */}
+                                        <div style={{
+                                            width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                                            background: event.effect?.col?.[0] ? `rgb(${event.effect.col[0].join(',')})` : 'var(--accent)',
+                                        }} />
+                                        {/* Label */}
+                                        <span style={{flex: 1, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                            {event.label || event.key}
+                                        </span>
+                                        {/* Effect info */}
+                                        <span style={{fontSize: 11, color: 'var(--text-dim)', flexShrink: 0, fontFamily: 'JetBrains Mono'}}>
+                                            {WLED_EFFECTS[event.effect?.fx] || `FX${event.effect?.fx ?? 0}`}
+                                            {event.chain?.length > 0 && ` ⛓${event.chain.length}`}
+                                        </span>
+                                        {/* Actions */}
+                                        <div style={{display: 'flex', gap: 2, flexShrink: 0}} onClick={e => e.stopPropagation()}>
+                                            <div className={`toggle ${event.enabled ? 'active' : ''}`} style={{transform: 'scale(0.8)'}}
                                                 onClick={() => {
                                                     const updated = {...events};
                                                     updated[event.key] = {...updated[event.key], enabled: !event.enabled};
                                                     setEvents(updated);
                                                 }} />
-                                            <button className="btn btn-sm" onClick={() => copyEffect(event.key)}
-                                                title="Effekt kopieren" style={{padding: '4px 6px', fontSize: 11}}>📋</button>
-                                            {clipboard && (
-                                                <button className="btn btn-sm" onClick={() => pasteEffect(event.key)}
-                                                    title="Effekt einfuegen" style={{padding: '4px 6px', fontSize: 11,
-                                                    background: 'rgba(0,214,143,0.1)', borderColor: 'rgba(0,214,143,0.3)'}}>📋▼</button>
-                                            )}
                                             <button className="btn btn-sm" onClick={() => testEvent(event.key)}
-                                                title="Effekt testen" style={{padding: '4px 8px'}}>▶</button>
-                                            <button className="btn btn-sm" onClick={() => setEditEvent(event.key)}
-                                                style={{padding: '4px 8px'}}>✎</button>
+                                                style={{padding: '2px 6px', fontSize: 10, minWidth: 0}}>▶</button>
+                                            <button className="btn btn-sm" onClick={() => copyEffect(event.key)}
+                                                style={{padding: '2px 5px', fontSize: 10, minWidth: 0}}>📋</button>
                                         </div>
                                     </div>
                                 ))}
@@ -2504,13 +2527,17 @@ function EventsPage({ devices }) {
                     Der passendste Score-Bereich wird gewählt.
                 </div>
             </div>
-            </>}
 
             {/* ── Advanced Features ── */}
             <PlayerColorsEditor />
             <BrightnessScheduleEditor />
             <SegmentZonesEditor />
             <StatsAmbientConfig />
+            </>}
+            </>}
+
+            {/* ── Caller Tab ── */}
+            {activeTab === 'caller' && <CallerPage />}
 
             {/* Edit Modal */}
             {editEvent && events[editEvent] && (
@@ -5337,11 +5364,6 @@ function CallerPage() {
 
     return (
         <div>
-            <div className="page-header">
-                <h2>🎙️ Caller</h2>
-                <p>Sounds für jeden Wurf, Score und Spielereignis</p>
-            </div>
-
             {/* ─── Master Controls ─── */}
             <div className="card" style={{marginBottom:20, borderColor: config?.enabled ? 'var(--success)' : 'var(--border)'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
@@ -5882,9 +5904,10 @@ function App() {
     const [devices, setDevices] = useState([]);
     const [autodartsConnected, setAutodartsConnected] = useState(false);
     const [boardCount, setBoardCount] = useState(0);
-    const [updateInfo, setUpdateInfo] = useState(null); // {available, remote_version, changelog, ...}
-    const [updateProgress, setUpdateProgress] = useState(null); // {percent, downloaded, total}
+    const [updateInfo, setUpdateInfo] = useState(null);
+    const [updateProgress, setUpdateProgress] = useState(null);
     const [updateRestarting, setUpdateRestarting] = useState(false);
+    const [appVersion, setAppVersion] = useState('');
     const { lastMessage } = useWebSocket();
 
     const refreshDevices = async () => {
@@ -5909,11 +5932,11 @@ function App() {
         refreshDevices();
         checkAutodarts();
         checkUpdate();
+        API.get('/api/update/check').then(d => { if (d?.local_version) setAppVersion(d.local_version); });
         const interval = setInterval(() => {
             refreshDevices();
             checkAutodarts();
         }, 10000);
-        // Check for updates every 30 minutes
         const updateInterval = setInterval(checkUpdate, 30 * 60 * 1000);
         return () => { clearInterval(interval); clearInterval(updateInterval); };
     }, []);
@@ -5985,7 +6008,6 @@ function App() {
             case 'leds': return <LEDControlPage devices={devices} />;
             case 'autodarts': return <AutodartsPage autodartsConnected={autodartsConnected} devices={devices} />;
             case 'events': return <EventsPage devices={devices} />;
-            case 'caller': return <CallerPage />;
             case 'flash': return <FlashPage devices={devices} />;
             case 'presets': return <PresetsPage devices={devices} />;
             case 'settings': return <SettingsPage />;
@@ -5996,7 +6018,7 @@ function App() {
     return (
         <ToastProvider>
             <div className="app-container">
-                <Sidebar activePage={activePage} setActivePage={setActivePage} autodartsStatus={autodartsConnected} boardCount={boardCount} />
+                <Sidebar activePage={activePage} setActivePage={setActivePage} autodartsStatus={autodartsConnected} boardCount={boardCount} version={appVersion} />
                 <main className="main-content">
                     {/* Update Restart Overlay */}
                     {updateRestarting && (

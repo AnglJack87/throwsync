@@ -2,6 +2,7 @@
 WLED Client - HTTP/JSON API communication with WLED devices.
 Supports WLED API v1 (JSON) for controlling LED strips.
 """
+MODULE_VERSION = "1.2.0"
 
 import asyncio
 import logging
