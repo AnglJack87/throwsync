@@ -31,6 +31,7 @@ from updater import (
     DEFAULT_MANIFEST_URL, rollback_update,
 )
 import time as _time
+from paths import FROZEN, BUNDLE_DIR, DATA_DIR, FRONTEND_HTML, SOUNDS_DIR, FIRMWARE_DIR, get_version as get_app_version
 
 # Module version imports
 from autodarts_client import MODULE_VERSION as AUTODARTS_VERSION
@@ -45,7 +46,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("throwsync")
 
 # Global instances
-config_manager = ConfigManager()
+config_manager = ConfigManager(str(DATA_DIR / "config.json"))
 device_manager = DeviceManager(config_manager)
 autodarts_client = AutodartsClient(config_manager, device_manager)
 esp_flasher = ESPFlasher()
@@ -154,9 +155,8 @@ async def lifespan(app: FastAPI):
     """Application lifecycle management."""
     logger.info("Starting ThrowSync...")
     config_manager.load()
-    # Create sounds directory for caller
-    sounds_dir = Path(__file__).parent / "sounds"
-    sounds_dir.mkdir(exist_ok=True)
+    # Ensure sounds directory exists (uses paths.py)
+    SOUNDS_DIR.mkdir(exist_ok=True)
     await device_manager.start()
     # Wire up event logging callback
     autodarts_client.event_callback = log_event
@@ -172,7 +172,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.4.2", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.5.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1113,8 +1113,7 @@ async def import_config(data: dict):
 
 
 # ─── Caller / Sound System ────────────────────────────────────────────────────
-
-SOUNDS_DIR = Path(__file__).parent / "sounds"
+# SOUNDS_DIR imported from paths.py
 
 @app.get("/api/caller/config")
 async def get_caller_config():
@@ -1612,18 +1611,42 @@ async def toggle_module(module_id: str):
 @app.get("/")
 async def serve_frontend():
     """Serve the main frontend."""
-    frontend_path = Path(__file__).parent.parent / "frontend" / "index.html"
-    if frontend_path.exists():
-        return HTMLResponse(frontend_path.read_text(encoding="utf-8"))
+    if FRONTEND_HTML.exists():
+        return HTMLResponse(FRONTEND_HTML.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
 
 
 def main():
-    """Entry point."""
+    """Entry point — works both as Python script and PyInstaller binary."""
+    import threading
+    import webbrowser
+
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8420"))
+    version = get_app_version()
+
+    print()
+    print("  ┌──────────────────────────────────┐")
+    print(f"  │   THROWSYNC v{version:<20s}│")
+    print("  │   WLED + Autodarts + Caller       │")
+    print("  └──────────────────────────────────┘")
+    print()
+
+    if FROZEN:
+        logger.info(f"Running as binary — Data dir: {DATA_DIR}")
+    else:
+        logger.info(f"Running as Python script — Project: {BUNDLE_DIR}")
+
     logger.info(f"Starting server on http://{host}:{port}")
     logger.info(f"Open http://localhost:{port} in your browser")
+
+    # Open browser after short delay
+    def open_browser():
+        import time
+        time.sleep(2)
+        webbrowser.open(f"http://localhost:{port}")
+
+    threading.Thread(target=open_browser, daemon=True).start()
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 

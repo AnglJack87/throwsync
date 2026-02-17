@@ -17,3 +17,7 @@ _update_backup/
 *.zip
 .DS_Store
 Thumbs.db
+# PyInstaller build artifacts
+build/
+dist/
+*.spec

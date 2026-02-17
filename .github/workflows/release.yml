@@ -1,0 +1,120 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            binary: throwsync
+          - os: windows-latest
+            platform: win-x64
+            binary: throwsync.exe
+          - os: macos-latest
+            platform: macos-arm64
+            binary: throwsync
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build binary
+        run: python build.py
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Rename binary
+        shell: bash
+        run: |
+          cd dist
+          if [ -f "throwsync.exe" ]; then
+            cp throwsync.exe throwsync-${{ steps.version.outputs.version }}-${{ matrix.platform }}.exe
+          else
+            cp throwsync throwsync-${{ steps.version.outputs.version }}-${{ matrix.platform }}
+            chmod +x throwsync-${{ steps.version.outputs.version }}-${{ matrix.platform }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: throwsync-${{ matrix.platform }}
+          path: dist/throwsync-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: List artifacts
+        run: find release-artifacts -type f | sort
+
+      - name: Create source ZIP (no .py files visible)
+        run: |
+          mkdir -p release-artifacts/source
+          zip -r release-artifacts/source/throwsync-${{ steps.version.outputs.version }}-source.zip \
+            . -x ".git/*" "dist/*" "build/*" "__pycache__/*" "*.spec" ".github/*"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ThrowSync ${{ steps.version.outputs.version }}
+          body: |
+            ## ThrowSync ${{ steps.version.outputs.version }}
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | 🐧 Linux (x64) | `throwsync-${{ steps.version.outputs.version }}-linux-x64` |
+            | 🪟 Windows (x64) | `throwsync-${{ steps.version.outputs.version }}-win-x64.exe` |
+            | 🍎 macOS (ARM) | `throwsync-${{ steps.version.outputs.version }}-macos-arm64` |
+
+            ### Installation
+
+            1. Binary herunterladen
+            2. In einen Ordner legen
+            3. Starten:
+               - **Linux/Mac**: `chmod +x throwsync-* && ./throwsync-*`
+               - **Windows**: Doppelklick auf `.exe`
+            4. Browser öffnet sich: `http://localhost:8420`
+
+            Config und Sounds werden automatisch neben dem Binary erstellt.
+          files: |
+            release-artifacts/**/*
+          draft: false
+          prerelease: false
