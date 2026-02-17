@@ -2126,6 +2126,143 @@ function AutodartsPage({ autodartsConnected, devices }) {
 
 // ─── Events Page ─────────────────────────────────────────────────────────────
 
+function ClipsTab() {
+    const [clipFiles, setClipFiles] = useState([]);
+    const [assignments, setAssignments] = useState({});
+    const [uploading, setUploading] = useState(false);
+    const toast = useToast();
+
+    const clipEvents = [
+        {id: 'match_won', label: '🏆 Match gewonnen'},
+        {id: 'game_won', label: '🎉 Leg gewonnen'},
+        {id: 'busted', label: '💥 Bust'},
+        {id: 'game_on', label: '🎯 Game On'},
+        {id: '180', label: '🔥 180!'},
+        {id: 'high_score', label: '⭐ High Score (100+)'},
+        {id: 'checkout_possible', label: '🎯 Checkout möglich'},
+        {id: 'miss', label: '😅 Daneben (Miss)'},
+        {id: 'bullseye', label: '🎯 Bullseye'},
+    ];
+
+    useEffect(() => {
+        API.get('/api/clips/files').then(d => setClipFiles(d?.files || []));
+        API.get('/api/clips/assignments').then(d => setAssignments(d || {}));
+    }, []);
+
+    const handleUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const resp = await fetch('/api/clips/upload', { method: 'POST', body: formData });
+            if (resp.ok) {
+                API.get('/api/clips/files').then(d => setClipFiles(d?.files || []));
+                toast.show('Clip hochgeladen!', 'success');
+            }
+        } catch(err) { toast.show('Upload fehlgeschlagen', 'error'); }
+        setUploading(false);
+        e.target.value = '';
+    };
+
+    const saveAssignment = (eventId, clip, duration) => {
+        const next = {...assignments};
+        if (clip) {
+            next[eventId] = { clip, duration: duration || 5 };
+        } else {
+            delete next[eventId];
+        }
+        setAssignments(next);
+        API.post('/api/clips/assignments', next);
+    };
+
+    const deleteClip = async (filename) => {
+        await fetch(`/api/clips/files/${filename}`, {method: 'DELETE'});
+        setClipFiles(clipFiles.filter(f => f.filename !== filename));
+        const next = {...assignments};
+        Object.keys(next).forEach(k => { if (next[k]?.clip === filename) delete next[k]; });
+        setAssignments(next);
+        API.post('/api/clips/assignments', next);
+    };
+
+    const testClip = (filename) => {
+        // Show clip overlay locally for testing
+        window.dispatchEvent(new CustomEvent('throwsync-test-clip', { detail: { clip: filename, duration: 5 } }));
+    };
+
+    return <>
+        <div className="card" style={{padding: 16, marginBottom: 12}}>
+            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12}}>
+                <div>
+                    <h3 style={{margin: 0}}>🎬 Video- & GIF-Clips</h3>
+                    <small style={{color: 'var(--text-dim)'}}>Clips werden als Fullscreen-Overlay angezeigt wenn ein Event ausgelöst wird</small>
+                </div>
+                <label className="btn btn-primary" style={{cursor: 'pointer', opacity: uploading ? 0.5 : 1}}>
+                    {uploading ? '⏳ ...' : '📁 Clip hochladen'}
+                    <input type="file" accept="video/*,image/gif,.gif,.mp4,.webm,.mov,.jpg,.png" hidden onChange={handleUpload} />
+                </label>
+            </div>
+
+            {clipFiles.length === 0 && (
+                <div style={{padding: 24, textAlign: 'center', color: 'var(--text-dim)', border: '1px dashed var(--border)', borderRadius: 8}}>
+                    Noch keine Clips hochgeladen. Unterstützt: MP4, WebM, GIF, MOV, JPG, PNG
+                </div>
+            )}
+
+            {clipFiles.length > 0 && (
+                <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+                    {clipFiles.map(f => (
+                        <div key={f.filename} style={{
+                            padding: '6px 10px', background: 'var(--bg-card)', borderRadius: 6,
+                            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13
+                        }}>
+                            <span>{f.type === 'video' ? '🎬' : '🖼️'}</span>
+                            <span style={{fontFamily: 'monospace'}}>{f.filename}</span>
+                            <small style={{color: 'var(--text-dim)'}}>({(f.size/1024).toFixed(0)}KB)</small>
+                            <button onClick={() => testClip(f.filename)} title="Vorschau"
+                                style={{background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14}}>▶</button>
+                            <button onClick={() => deleteClip(f.filename)} title="Löschen"
+                                style={{background: 'none', border: 'none', color: '#f44', cursor: 'pointer', fontSize: 14}}>✕</button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+
+        <div className="card" style={{padding: 16}}>
+            <h3 style={{margin: '0 0 12px'}}>Event → Clip Zuweisungen</h3>
+            <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
+                {clipEvents.map(ev => {
+                    const a = assignments[ev.id];
+                    return (
+                        <div key={ev.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                            background: a?.clip ? 'rgba(139,92,246,0.08)' : 'transparent',
+                            borderRadius: 6, border: '1px solid var(--border)',
+                        }}>
+                            <span style={{minWidth: 180}}>{ev.label}</span>
+                            <select value={a?.clip || ''} onChange={e => saveAssignment(ev.id, e.target.value, a?.duration)}
+                                style={{flex: 1, padding: '4px 8px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4}}>
+                                <option value="">— Kein Clip —</option>
+                                {clipFiles.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                            </select>
+                            {a?.clip && <>
+                                <label style={{fontSize: 12, color: 'var(--text-dim)'}}>Dauer:</label>
+                                <input type="number" min="1" max="30" value={a?.duration || 5}
+                                    onChange={e => saveAssignment(ev.id, a.clip, parseInt(e.target.value) || 5)}
+                                    style={{width: 50, padding: '4px 6px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4}} />
+                                <small style={{color: 'var(--text-dim)'}}>Sek.</small>
+                            </>}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    </>;
+}
+
+
 function EventsPage({ devices }) {
     const [events, setEvents] = useState({});
     const [editEvent, setEditEvent] = useState(null);
@@ -2293,6 +2430,7 @@ function EventsPage({ devices }) {
                 {[
                     {id: 'led', label: '⚡ LED Effekte', count: `${enabledCount}/${totalCount}`},
                     {id: 'caller', label: '🎙 Caller Sounds'},
+                    {id: 'clips', label: '🎬 Clips'},
                 ].map(tab => (
                     <div key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                         flex: 1, padding: '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'center',
@@ -2538,6 +2676,9 @@ function EventsPage({ devices }) {
 
             {/* ── Caller Tab ── */}
             {activeTab === 'caller' && <CallerPage />}
+
+            {/* ── Clips Tab ── */}
+            {activeTab === 'clips' && <ClipsTab clipFiles={[]} />}
 
             {/* Edit Modal */}
             {editEvent && events[editEvent] && (
@@ -5941,10 +6082,31 @@ function App() {
         return () => { clearInterval(interval); clearInterval(updateInterval); };
     }, []);
 
-    // ─── Caller Audio Engine ────────────────────────────────────────────────
+    // ─── Caller Audio Engine (v2 — Priority, Preload, Interrupt) ───────────
     const audioCache = useRef({});
     const audioQueue = useRef([]);
     const audioPlaying = useRef(false);
+    const currentAudio = useRef(null);
+    const preloaded = useRef(false);
+
+    // Preload all assigned sounds on first load
+    useEffect(() => {
+        if (preloaded.current) return;
+        preloaded.current = true;
+        API.get('/api/caller/sounds').then(data => {
+            if (!data?.sounds) return;
+            const files = new Set();
+            Object.values(data.sounds).forEach(s => { if (s.sound) files.add(s.sound); });
+            files.forEach(f => {
+                const url = f.startsWith('http') ? f : `/sounds/${f}`;
+                const a = new Audio();
+                a.preload = 'auto';
+                a.src = url;
+                audioCache.current[url] = a;
+            });
+            console.log(`Caller: ${files.size} Sounds vorgeladen`);
+        });
+    }, []);
 
     const playCallerQueue = useCallback(async () => {
         if (audioPlaying.current) return;
@@ -5959,16 +6121,39 @@ function App() {
                 }
                 audio.volume = Math.min(1, Math.max(0, (item.globalVol || 0.8) * (item.vol || 1.0)));
                 audio.currentTime = 0;
+                currentAudio.current = audio;
                 await new Promise((resolve, reject) => {
-                    audio.onended = resolve;
-                    audio.onerror = reject;
-                    audio.play().catch(reject);
+                    // Timeout: skip sound if it takes >4s
+                    const timeout = setTimeout(() => {
+                        audio.pause();
+                        audio.currentTime = 0;
+                        resolve();
+                    }, 4000);
+                    audio.onended = () => { clearTimeout(timeout); resolve(); };
+                    audio.onerror = () => { clearTimeout(timeout); resolve(); }; // Don't reject, just skip
+                    audio.play().catch(() => { clearTimeout(timeout); resolve(); });
                 });
+                currentAudio.current = null;
             } catch (e) {
                 console.warn('Caller audio error:', e);
             }
         }
         audioPlaying.current = false;
+    }, []);
+
+    // ─── Video/Clip Overlay ──────────────────────────────────────────────────
+    const [activeClip, setActiveClip] = useState(null); // {url, duration}
+
+    // Listen for test-clip events from ClipsTab
+    useEffect(() => {
+        const handler = (e) => {
+            const { clip, duration } = e.detail;
+            const clipUrl = clip.startsWith('http') ? clip : `/clips/${clip}`;
+            setActiveClip({ url: clipUrl, duration: duration || 5 });
+            setTimeout(() => setActiveClip(null), (duration || 5) * 1000);
+        };
+        window.addEventListener('throwsync-test-clip', handler);
+        return () => window.removeEventListener('throwsync-test-clip', handler);
     }, []);
 
     useEffect(() => {
@@ -5979,6 +6164,24 @@ function App() {
             // Caller sound playback
             if (lastMessage.type === 'caller_play' && lastMessage.sounds) {
                 const globalVol = lastMessage.volume || 0.8;
+                const priority = lastMessage.priority || 0; // 0=normal, 1=high (score), 2=critical (game won)
+
+                // High priority: flush queue and interrupt current sound
+                if (priority >= 1 && audioPlaying.current) {
+                    audioQueue.current = [];
+                    if (currentAudio.current) {
+                        currentAudio.current.pause();
+                        currentAudio.current.currentTime = 0;
+                        currentAudio.current = null;
+                    }
+                    audioPlaying.current = false;
+                }
+
+                // Limit queue to 3 sounds max
+                if (audioQueue.current.length > 3) {
+                    audioQueue.current = audioQueue.current.slice(-2);
+                }
+
                 const sorted = [...lastMessage.sounds].sort((a, b) => (a.priority || 1) - (b.priority || 1));
                 sorted.forEach(s => {
                     if (s.sound) {
@@ -5988,6 +6191,15 @@ function App() {
                 });
                 playCallerQueue();
             }
+
+            // Video clip playback
+            if (lastMessage.type === 'caller_clip' && lastMessage.clip) {
+                const clipUrl = lastMessage.clip.startsWith('http') ? lastMessage.clip : `/clips/${lastMessage.clip}`;
+                const duration = lastMessage.clip_duration || 5;
+                setActiveClip({ url: clipUrl, duration });
+                setTimeout(() => setActiveClip(null), duration * 1000);
+            }
+
             // Update progress
             if (lastMessage.type === 'update_progress') {
                 setUpdateProgress({ percent: lastMessage.percent, downloaded: lastMessage.downloaded, total: lastMessage.total });
@@ -6071,6 +6283,25 @@ function App() {
 
                     {renderPage()}
                 </main>
+
+                {/* Video/GIF Clip Overlay */}
+                {activeClip && (
+                    <div style={{
+                        position: 'fixed', inset: 0, zIndex: 9998,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(0,0,0,0.75)', cursor: 'pointer',
+                        animation: 'fadeIn 0.2s ease-out',
+                    }} onClick={() => setActiveClip(null)}>
+                        {activeClip.url.match(/\.(mp4|webm|mov)$/i) ? (
+                            <video src={activeClip.url} autoPlay muted={false}
+                                style={{maxWidth: '80vw', maxHeight: '80vh', borderRadius: 16, boxShadow: '0 0 60px rgba(0,0,0,0.5)'}}
+                                onEnded={() => setActiveClip(null)} />
+                        ) : (
+                            <img src={activeClip.url}
+                                style={{maxWidth: '80vw', maxHeight: '80vh', borderRadius: 16, boxShadow: '0 0 60px rgba(0,0,0,0.5)'}} />
+                        )}
+                    </div>
+                )}
             </div>
         </ToastProvider>
     );

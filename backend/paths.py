@@ -30,10 +30,12 @@ VERSION_FILE = BUNDLE_DIR / "VERSION"
 # ── Writable paths (user data) ──
 CONFIG_FILE = DATA_DIR / "config.json"
 SOUNDS_DIR = DATA_DIR / "sounds"
+CLIPS_DIR = DATA_DIR / "clips"
 FIRMWARE_DIR = DATA_DIR / "firmware"
 
 # Ensure writable dirs exist
 SOUNDS_DIR.mkdir(exist_ok=True)
+CLIPS_DIR.mkdir(exist_ok=True)
 FIRMWARE_DIR.mkdir(exist_ok=True)
 
 

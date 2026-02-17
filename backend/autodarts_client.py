@@ -758,7 +758,7 @@ class AutodartsBoardConnection:
         If bust is detected during the delay, only 'busted' is announced.
         """
         try:
-            await asyncio.sleep(0.4)  # Wait 400ms for bust detection from match state
+            await asyncio.sleep(0.2)  # Wait 200ms for bust detection from match state
             
             if self._score_announced:
                 return  # Already announced (by match state bust or game won)

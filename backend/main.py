@@ -31,7 +31,7 @@ from updater import (
     DEFAULT_MANIFEST_URL, rollback_update,
 )
 import time as _time
-from paths import FROZEN, BUNDLE_DIR, DATA_DIR, FRONTEND_HTML, SOUNDS_DIR, FIRMWARE_DIR, get_version as get_app_version
+from paths import FROZEN, BUNDLE_DIR, DATA_DIR, FRONTEND_HTML, SOUNDS_DIR, CLIPS_DIR, FIRMWARE_DIR, get_version as get_app_version
 
 # Module version imports
 from autodarts_client import MODULE_VERSION as AUTODARTS_VERSION
@@ -140,14 +140,33 @@ async def broadcast_caller_sound(sounds: list, event_name: str = "", data: dict 
     if not resolved:
         return
     global_vol = caller_cfg.get("volume", 0.8)
-    logger.debug(f"Caller play: {[r['key'] for r in resolved]}")
+    # Determine priority: critical events interrupt current playback
+    priority = 0  # normal
+    if event_name in ("match_won", "game_won", "game_on"):
+        priority = 2  # critical — interrupt everything
+    elif event_name in ("player_change", "busted", "checkout_possible"):
+        priority = 1  # high — interrupt queue
+
+    logger.debug(f"Caller play: {[r['key'] for r in resolved]} (priority={priority})")
     await broadcast_ws({
         "type": "caller_play",
         "sounds": resolved,
         "event": event_name,
         "data": data or {},
         "volume": global_vol,
+        "priority": priority,
     })
+
+    # Check for clip assignment on this event
+    clip_assignments = config_manager.get("clip_assignments", {})
+    clip_info = clip_assignments.get(event_name)
+    if clip_info and clip_info.get("clip"):
+        await broadcast_ws({
+            "type": "caller_clip",
+            "clip": clip_info["clip"],
+            "clip_duration": clip_info.get("duration", 5),
+            "event": event_name,
+        })
 
 
 @asynccontextmanager
@@ -172,7 +191,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.5.3", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.6.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1241,6 +1260,76 @@ async def serve_sound_file(filename: str):
     }
     mt = media_types.get(filepath.suffix.lower(), "application/octet-stream")
     return FileResponse(filepath, media_type=mt)
+
+
+# ─── Clips (Video/GIF Overlay) ──────────────────────────────────────────────
+
+@app.get("/clips/{filename}")
+async def serve_clip_file(filename: str):
+    """Serve a video/GIF clip for overlay playback."""
+    filepath = CLIPS_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(404, "Clip not found")
+    media_types = {
+        ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+        ".gif": "image/gif", ".png": "image/png", ".jpg": "image/jpeg",
+    }
+    mt = media_types.get(filepath.suffix.lower(), "application/octet-stream")
+    return FileResponse(filepath, media_type=mt)
+
+
+@app.get("/api/clips/files")
+async def list_clip_files():
+    """List all uploaded clip files."""
+    CLIPS_DIR.mkdir(exist_ok=True)
+    clips = []
+    for f in sorted(CLIPS_DIR.iterdir()):
+        if f.is_file() and f.suffix.lower() in ('.mp4', '.webm', '.mov', '.gif', '.png', '.jpg', '.jpeg'):
+            clips.append({
+                "filename": f.name,
+                "size": f.stat().st_size,
+                "type": "video" if f.suffix.lower() in ('.mp4', '.webm', '.mov') else "image",
+            })
+    return {"files": clips}
+
+
+@app.post("/api/clips/upload")
+async def upload_clip(file: UploadFile = File(...)):
+    """Upload a video/GIF clip."""
+    CLIPS_DIR.mkdir(exist_ok=True)
+    allowed = {'.mp4', '.webm', '.mov', '.gif', '.png', '.jpg', '.jpeg'}
+    ext = Path(file.filename).suffix.lower()
+    if ext not in allowed:
+        raise HTTPException(400, f"Nicht erlaubt: {ext}. Erlaubt: {', '.join(allowed)}")
+    safe_name = "".join(c for c in file.filename if c.isalnum() or c in '.-_')
+    dest = CLIPS_DIR / safe_name
+    content = await file.read()
+    dest.write_bytes(content)
+    return {"success": True, "filename": safe_name, "size": len(content)}
+
+
+@app.delete("/api/clips/files/{filename}")
+async def delete_clip(filename: str):
+    """Delete a clip file."""
+    filepath = CLIPS_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(404, "Clip not found")
+    filepath.unlink()
+    return {"success": True}
+
+
+@app.get("/api/clips/assignments")
+async def get_clip_assignments():
+    """Get event → clip assignments."""
+    return config_manager.get("clip_assignments", {})
+
+
+@app.post("/api/clips/assignments")
+async def save_clip_assignments(data: dict):
+    """Save event → clip assignments. Format: {event_key: {clip: 'file.mp4', duration: 5}}"""
+    config_manager.set("clip_assignments", data)
+    config_manager.save()
+    return {"success": True}
 
 
 @app.post("/api/caller/test")
