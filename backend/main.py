@@ -220,7 +220,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.9.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -2003,13 +2003,29 @@ async def activate_player_profile(profile_id: str):
 async def update_player_stats(profile_id: str, data: dict):
     """Update player stats with a game event."""
     from player_profiles import update_stats
+    from achievements import check_achievements, get_achievement_info
     profiles = config_manager.get("player_profiles", [])
     for i, p in enumerate(profiles):
         if p.get("id") == profile_id:
             profiles[i] = update_stats(p, data.get("event", ""), data)
+            # Check for new achievements
+            unlocked = profiles[i].get("achievements", [])
+            new_achs = check_achievements(profiles[i].get("stats", {}), unlocked)
+            if new_achs:
+                profiles[i]["achievements"] = unlocked + new_achs
+                # Broadcast achievement unlocked
+                for aid in new_achs:
+                    info = get_achievement_info(aid)
+                    if info:
+                        await broadcast_ws({
+                            "type": "achievement_unlocked",
+                            "profile_id": profile_id,
+                            "player_name": p.get("name", ""),
+                            "achievement": info,
+                        })
             config_manager.set("player_profiles", profiles)
             config_manager.save()
-            return {"success": True, "stats": profiles[i].get("stats", {})}
+            return {"success": True, "stats": profiles[i].get("stats", {}), "new_achievements": new_achs}
     raise HTTPException(404, "Profile not found")
 
 
@@ -2021,10 +2037,104 @@ async def reset_player_stats(profile_id: str):
     for i, p in enumerate(profiles):
         if p.get("id") == profile_id:
             profiles[i]["stats"] = empty_stats()
+            profiles[i]["achievements"] = []
             config_manager.set("player_profiles", profiles)
             config_manager.save()
             return {"success": True}
     raise HTTPException(404, "Profile not found")
+
+
+# ─── Achievements ─────────────────────────────────────────────────────────────
+
+@app.get("/api/achievements")
+async def get_achievements():
+    """Get all available achievements."""
+    from achievements import get_all_achievements
+    lang = config_manager.get("language", "de")
+    return {"achievements": get_all_achievements(lang)}
+
+
+@app.get("/api/achievements/{profile_id}")
+async def get_player_achievements(profile_id: str):
+    """Get achievements for a specific player."""
+    from achievements import get_achievement_info
+    profiles = config_manager.get("player_profiles", [])
+    profile = next((p for p in profiles if p.get("id") == profile_id), None)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    unlocked = profile.get("achievements", [])
+    lang = config_manager.get("language", "de")
+    return {
+        "unlocked": [get_achievement_info(aid, lang) for aid in unlocked if get_achievement_info(aid, lang)],
+        "total": len(unlocked),
+    }
+
+
+# ─── Lobby Display ────────────────────────────────────────────────────────────
+
+@app.get("/lobby")
+async def serve_lobby():
+    """Serve lobby/waiting screen page."""
+    profiles = config_manager.get("player_profiles", [])
+    lang = config_manager.get("language", "de")
+    # Build player cards HTML
+    player_html = ""
+    for p in profiles:
+        stats = p.get("stats", {})
+        avg = stats.get("avg_score", 0)
+        co_hit = stats.get("checkouts_hit", 0)
+        co_miss = stats.get("checkouts_missed", 0)
+        co_rate = f"{(co_hit/(co_hit+co_miss)*100):.0f}%" if (co_hit+co_miss) > 0 else "—"
+        ach_count = len(p.get("achievements", []))
+        player_html += f'''
+        <div class="player" style="border-color:{p.get('led_color','#8b5cf6')}">
+            <div class="avatar">{p.get('avatar','\U0001F3AF')}</div>
+            <div class="name">{p.get('name','?')}</div>
+            <div class="stats">
+                <span>Avg: <b>{avg}</b></span>
+                <span>180s: <b>{stats.get('total_180s',0)}</b></span>
+                <span>C/O: <b>{co_rate}</b></span>
+                <span>\U0001F3C6 {ach_count}</span>
+            </div>
+        </div>'''
+    html = f'''<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>ThrowSync Lobby</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#0a0a0f;color:#e2e2e8;font-family:system-ui,-apple-system,sans-serif;
+display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;overflow:hidden}}
+.logo{{font-size:48px;font-weight:900;letter-spacing:6px;margin-bottom:8px;
+background:linear-gradient(135deg,#8b5cf6,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.subtitle{{color:#888;font-size:16px;margin-bottom:40px;letter-spacing:2px}}
+.players{{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;margin-bottom:40px}}
+.player{{background:rgba(255,255,255,0.04);border:2px solid #8b5cf6;border-radius:16px;
+padding:24px;min-width:200px;text-align:center;backdrop-filter:blur(10px);
+animation:float 3s ease-in-out infinite}}
+.player:nth-child(2){{animation-delay:0.5s}}.player:nth-child(3){{animation-delay:1s}}
+.avatar{{font-size:48px;margin-bottom:8px}}
+.name{{font-size:22px;font-weight:700;margin-bottom:8px}}
+.stats{{display:flex;gap:12px;font-size:12px;color:#888;justify-content:center;flex-wrap:wrap}}
+.stats b{{color:#e2e2e8}}
+.waiting{{color:#555;font-size:14px;animation:pulse 2s ease-in-out infinite}}
+@keyframes float{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-8px)}}}}
+@keyframes pulse{{0%,100%{{opacity:0.5}}50%{{opacity:1}}}}
+.clock{{font-size:64px;font-weight:200;color:#333;font-variant-numeric:tabular-nums;margin-bottom:20px}}
+</style>
+<script>
+setInterval(()=>{{const d=new Date();document.getElementById('clock').textContent=
+d.toLocaleTimeString('de-DE',{{hour:'2-digit',minute:'2-digit'}})}},1000);
+const ws=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/ws');
+ws.onmessage=e=>{{const m=JSON.parse(e.data);
+if(m.type==='game_started')location.reload();
+if(m.type==='player_activated')location.reload()}};
+</script></head><body>
+<div id="clock" class="clock"></div>
+<div class="logo">THROWSYNC</div>
+<div class="subtitle">WAITING FOR GAME</div>
+<div class="players">{player_html}</div>
+<div class="waiting">\U0001F3AF Warte auf Spielbeginn...</div>
+</body></html>'''
+    return HTMLResponse(html)
 
 
 # ─── Display Overlay Test (continued) ────────────────────────────────────────
@@ -2095,6 +2205,51 @@ async def test_display_overlay(data: dict):
             await broadcast_ws({"type": "caller_clip", "clip": clip_info["clip"], "clip_duration": clip_info.get("duration", 5), "event": "match_won"})
 
     return {"success": True, "event": event}
+
+
+# ─── PWA Support ──────────────────────────────────────────────────────────────
+
+@app.get("/manifest.json")
+async def pwa_manifest():
+    """Serve PWA manifest for installable app."""
+    return JSONResponse({
+        "name": "ThrowSync",
+        "short_name": "ThrowSync",
+        "description": "Dart Gaming Lightshow & Caller System",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0a0a0f",
+        "theme_color": "#8b5cf6",
+        "orientation": "any",
+        "icons": [
+            {"src": "/pwa-icon-192.svg", "sizes": "192x192", "type": "image/svg+xml"},
+            {"src": "/pwa-icon-512.svg", "sizes": "512x512", "type": "image/svg+xml"},
+        ],
+    })
+
+
+@app.get("/pwa-icon-192.svg")
+@app.get("/pwa-icon-512.svg")
+async def pwa_icon():
+    """SVG icon for PWA."""
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <rect width="512" height="512" rx="64" fill="#0a0a0f"/>
+    <circle cx="256" cy="256" r="180" fill="none" stroke="#8b5cf6" stroke-width="12"/>
+    <circle cx="256" cy="256" r="120" fill="none" stroke="#3b82f6" stroke-width="8"/>
+    <circle cx="256" cy="256" r="60" fill="none" stroke="#8b5cf6" stroke-width="6"/>
+    <circle cx="256" cy="256" r="16" fill="#8b5cf6"/>
+    <text x="256" y="440" text-anchor="middle" fill="#e2e2e8" font-family="system-ui" font-size="48" font-weight="900" letter-spacing="4">THROWSYNC</text>
+    </svg>'''
+    return Response(content=svg, media_type="image/svg+xml")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    """Minimal service worker for PWA installability."""
+    js = '''self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(clients.claim()));
+self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => new Response('Offline'))));'''
+    return Response(content=js, media_type="application/javascript")
 
 
 # ─── Serve Frontend ───────────────────────────────────────────────────────────

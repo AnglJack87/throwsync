@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="/pwa-icon-192.svg" type="image/svg+xml">
     <title>ThrowSync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -835,6 +840,7 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, versi
         { id: 'events', icon: '\u26A1', label: t('nav.events', 'Events & Caller') },
         { id: 'players', icon: '\uD83C\uDFAD', label: 'Spieler' },
         { id: 'stats', icon: '\uD83D\uDCCA', label: t('nav.stats', 'Statistiken') },
+        { id: 'achievements', icon: '\uD83C\uDFC5', label: 'Achievements' },
         { id: 'music', icon: '\uD83C\uDFB5', label: t('nav.music', 'Musik') },
         { id: 'flash', icon: '\u21AF', label: 'Firmware' },
         { id: 'presets', icon: '\u2605', label: 'Presets' },
@@ -5123,6 +5129,126 @@ function StatsPage() {
 }
 
 
+// ─── Achievements Page ───────────────────────────────────────────────────────
+
+function AchievementsPage() {
+    const [allAchievements, setAll] = useState([]);
+    const [profiles, setProfiles] = useState([]);
+    const [selectedId, setSelectedId] = useState('');
+    const { t } = useI18n();
+
+    useEffect(() => {
+        API.get('/api/achievements').then(d => setAll(d?.achievements || []));
+        API.get('/api/profiles/players').then(d => {
+            const p = d?.profiles || [];
+            setProfiles(p);
+            if (p.length > 0) setSelectedId(p[0].id);
+        });
+    }, []);
+
+    const selectedProfile = profiles.find(p => p.id === selectedId);
+    const unlocked = selectedProfile?.achievements || [];
+    const unlockedCount = unlocked.length;
+    const totalCount = allAchievements.length;
+    const progress = totalCount > 0 ? Math.round((unlockedCount / totalCount) * 100) : 0;
+
+    const categories = [
+        { id: 'score', label: '\uD83C\uDFAF Score', desc: 'Punkte und Würfe' },
+        { id: 'wins', label: '\uD83C\uDFC6 Siege', desc: 'Legs und Matches' },
+        { id: 'checkout', label: '\u2705 Checkout', desc: 'Finishes' },
+        { id: 'grind', label: '\uD83C\uDFAE Ausdauer', desc: 'Spielzeit' },
+    ];
+
+    const tierStyle = {
+        bronze: { bg: 'rgba(205,127,50,0.15)', border: '#cd7f32' },
+        silver: { bg: 'rgba(192,192,192,0.15)', border: '#c0c0c0' },
+        gold: { bg: 'rgba(255,215,0,0.15)', border: '#ffd700' },
+        diamond: { bg: 'rgba(185,242,255,0.15)', border: '#b9f2ff' },
+    };
+
+    return (
+        <div>
+            <div className="page-header">
+                <h2>\uD83C\uDFC5 Achievements</h2>
+                <p>Schalte Badges frei durch dein Spiel</p>
+            </div>
+
+            {/* Player Selector */}
+            <div className="card" style={{padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8}}>
+                <span style={{fontSize: 13, color: 'var(--text-dim)'}}>Spieler:</span>
+                {profiles.map(p => (
+                    <button key={p.id} className={'btn ' + (selectedId === p.id ? 'btn-primary' : '')}
+                        style={{fontSize: 12, padding: '4px 10px'}}
+                        onClick={() => setSelectedId(p.id)}>
+                        {p.avatar} {p.name}
+                    </button>
+                ))}
+            </div>
+
+            {/* Progress Bar */}
+            {selectedProfile && (
+                <div className="card" style={{padding: 16, marginBottom: 16}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: 8}}>
+                        <span style={{fontWeight: 600}}>{selectedProfile.avatar} {selectedProfile.name}</span>
+                        <span style={{color: 'var(--accent)', fontWeight: 700}}>{unlockedCount}/{totalCount} ({progress}%)</span>
+                    </div>
+                    <div style={{height: 8, background: 'var(--bg)', borderRadius: 4, overflow: 'hidden'}}>
+                        <div style={{height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg, #8b5cf6, #3b82f6)', borderRadius: 4, transition: 'width 0.5s ease'}} />
+                    </div>
+                </div>
+            )}
+
+            {profiles.length === 0 && (
+                <div className="card" style={{padding: 32, textAlign: 'center', color: 'var(--text-dim)'}}>
+                    <div style={{fontSize: 48, marginBottom: 12}}>\uD83C\uDFC5</div>
+                    <p>Erstelle zuerst ein Spieler-Profil.</p>
+                </div>
+            )}
+
+            {/* Achievement Categories */}
+            {selectedProfile && categories.map(cat => {
+                const catAchs = allAchievements.filter(a => a.category === cat.id);
+                if (catAchs.length === 0) return null;
+                return (
+                    <div key={cat.id} className="card" style={{padding: 16, marginBottom: 12}}>
+                        <h4 style={{margin: '0 0 4px'}}>{cat.label}</h4>
+                        <small style={{color: 'var(--text-dim)', display: 'block', marginBottom: 12}}>{cat.desc}</small>
+                        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8}}>
+                            {catAchs.map(a => {
+                                const isUnlocked = unlocked.includes(a.id);
+                                const ts = tierStyle[a.tier] || tierStyle.bronze;
+                                return (
+                                    <div key={a.id} style={{
+                                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                                        borderRadius: 8,
+                                        background: isUnlocked ? ts.bg : 'rgba(255,255,255,0.02)',
+                                        border: `1px solid ${isUnlocked ? ts.border : 'var(--border)'}`,
+                                        opacity: isUnlocked ? 1 : 0.4,
+                                    }}>
+                                        <span style={{fontSize: 28, filter: isUnlocked ? 'none' : 'grayscale(1)'}}>{a.icon}</span>
+                                        <div>
+                                            <div style={{fontWeight: 600, fontSize: 13}}>{a.name}</div>
+                                            <div style={{fontSize: 11, color: isUnlocked ? ts.border : 'var(--text-dim)'}}>
+                                                {a.desc}
+                                            </div>
+                                            <span style={{
+                                                fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                                                color: isUnlocked ? ts.border : '#555', letterSpacing: 1,
+                                            }}>{a.tier}</span>
+                                        </div>
+                                        {isUnlocked && <span style={{marginLeft: 'auto', fontSize: 16}}>✓</span>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+
 // ─── Music Player ────────────────────────────────────────────────────────────
 
 function MusicPage() {
@@ -5737,9 +5863,14 @@ function SettingsPage() {
                     }}>
                         📋 OBS URL kopieren
                     </button>
+                    <button className="btn" onClick={() => {
+                        window.open('/lobby', '_blank');
+                    }}>
+                        🏠 Lobby Display
+                    </button>
                 </div>
                 <small style={{color: 'var(--text-dim)', marginTop: 8, display: 'block'}}>
-                    Bookmarklet: 1 Klick auf Autodarts = HUD + Clips erscheinen. • OBS: {window.location.origin}/display als Browser-Source.
+                    Bookmarklet: 1 Klick auf Autodarts = HUD + Clips erscheinen. • OBS: {window.location.origin}/display als Browser-Source. • Lobby: {window.location.origin}/lobby
                 </small>
 
                 <div style={{marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)'}}>
@@ -7288,6 +7419,29 @@ function App() {
                 });
             }
 
+            // Achievement unlocked notification
+            if (lastMessage.type === 'achievement_unlocked') {
+                const a = lastMessage.achievement;
+                if (a) {
+                    // Show as persistent toast-style notification
+                    const el = document.createElement('div');
+                    el.innerHTML = `<div style="position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:99999;
+                        background:linear-gradient(135deg,rgba(139,92,246,0.95),rgba(59,130,246,0.95));
+                        color:#fff;padding:16px 24px;border-radius:12px;display:flex;align-items:center;gap:12px;
+                        box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:slideDown 0.5s ease;font-family:system-ui">
+                        <span style="font-size:36px">${a.icon}</span>
+                        <div>
+                            <div style="font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:2px;opacity:0.7">
+                                🏅 Achievement Unlocked!</div>
+                            <div style="font-weight:700;font-size:18px">${a.name}</div>
+                            <div style="font-size:12px;opacity:0.8">${lastMessage.player_name} — ${a.desc}</div>
+                        </div>
+                    </div>`;
+                    document.body.appendChild(el);
+                    setTimeout(() => el.remove(), 5000);
+                }
+            }
+
             // Update progress
             if (lastMessage.type === 'update_progress') {
                 setUpdateProgress({ percent: lastMessage.percent, downloaded: lastMessage.downloaded, total: lastMessage.total });
@@ -7310,6 +7464,7 @@ function App() {
             case 'events': return <EventsPage devices={devices} />;
             case 'players': return <PlayersPage />;
             case 'stats': return <StatsPage />;
+            case 'achievements': return <AchievementsPage />;
             case 'music': return <MusicPage />;
             case 'flash': return <FlashPage devices={devices} />;
             case 'presets': return <PresetsPage devices={devices} />;
@@ -7399,6 +7554,11 @@ function App() {
 }
 
 ReactDOM.render(<I18nProvider><App /></I18nProvider>, document.getElementById('root'));
+
+// Register PWA Service Worker
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>

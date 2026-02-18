@@ -266,6 +266,12 @@
                 });
             }
 
+            // Achievement unlocked
+            if (msg.type === 'achievement_unlocked' && msg.achievement) {
+                const a = msg.achievement;
+                showToast(`\uD83C\uDFC5 ${a.icon} ${a.name} — ${msg.player_name}`);
+            }
+
             // Display state (score, remaining, throws)
             if (msg.type === 'display_state') {
                 const d = msg.data || {};
