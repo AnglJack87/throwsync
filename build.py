@@ -85,6 +85,7 @@ def build():
     add_data = [
         f"{FRONTEND_DIR / 'index.html'}{sep}frontend",
         f"{FRONTEND_DIR / 'display.html'}{sep}frontend",
+        f"{FRONTEND_DIR / 'overlay.js'}{sep}frontend",
         f"{PROJECT_ROOT / 'VERSION'}{sep}.",
     ]
 

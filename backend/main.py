@@ -11,9 +11,9 @@ import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -191,7 +191,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.6.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.6.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1711,6 +1711,111 @@ async def serve_display():
     if DISPLAY_HTML.exists():
         return HTMLResponse(DISPLAY_HTML.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>Display page not found</h1>", status_code=404)
+
+
+@app.get("/overlay.js")
+async def serve_overlay_js(request: Request):
+    """Serve the injectable overlay script with correct host."""
+    js_path = FRONTEND_HTML.parent / "overlay.js"
+    if not js_path.exists():
+        raise HTTPException(404, "overlay.js not found")
+    host = request.headers.get("host", "localhost:8420")
+    js = js_path.read_text(encoding="utf-8")
+    js = js.replace("__THROWSYNC_HOST__", host)
+    return Response(content=js, media_type="application/javascript")
+
+
+@app.get("/bookmarklet")
+async def serve_bookmarklet(request: Request):
+    """Serve bookmarklet setup page."""
+    host = request.headers.get("host", "localhost:8420")
+    html = f"""<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8"><title>ThrowSync Bookmarklet</title>
+<style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, sans-serif; background: #0f0f1a; color: #e0e0e0; padding: 40px; line-height: 1.6; }}
+    h1 {{ color: #8b5cf6; margin-bottom: 8px; }}
+    .subtitle {{ color: #888; margin-bottom: 32px; }}
+    .card {{ background: #1a1a2e; border-radius: 12px; padding: 24px; margin-bottom: 24px; border: 1px solid #2a2a3e; }}
+    .bookmarklet-link {{
+        display: inline-block; padding: 14px 28px; margin: 16px 0;
+        background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #fff;
+        text-decoration: none; border-radius: 10px; font-size: 18px; font-weight: 700;
+        box-shadow: 0 4px 20px rgba(139,92,246,0.3);
+        cursor: grab; transition: transform 0.2s;
+    }}
+    .bookmarklet-link:hover {{ transform: scale(1.03); }}
+    .step {{ display: flex; gap: 16px; margin: 16px 0; align-items: flex-start; }}
+    .step-num {{ background: #8b5cf6; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }}
+    .step-text {{ padding-top: 4px; }}
+    code {{ background: #2a2a3e; padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 13px; }}
+    .preview {{ background: #000; border-radius: 8px; padding: 12px; margin-top: 16px; text-align: center; }}
+    .preview-bar {{ display: inline-flex; gap: 16px; align-items: center; background: rgba(0,0,0,0.8); padding: 6px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); }}
+    .p-label {{ font-size: 10px; color: #888; text-transform: uppercase; }}
+    .p-val {{ font-size: 18px; font-weight: 700; }}
+    .p-score {{ color: #8b5cf6; }}
+    .p-rest {{ color: #10b981; }}
+    .p-throw {{ color: #f59e0b; }}
+    .note {{ color: #888; font-size: 13px; margin-top: 8px; }}
+</style></head><body>
+    <h1>ThrowSync Overlay</h1>
+    <p class="subtitle">1-Klick HUD + Clips direkt in Autodarts / Darthelfer</p>
+
+    <div class="card">
+        <h2>Bookmarklet installieren</h2>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">Zeige die <strong>Lesezeichen-Leiste</strong> an (Strg+Shift+B in Chrome)</div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text"><strong>Ziehe</strong> diesen Button in die Lesezeichen-Leiste:</div>
+        </div>
+
+        <a class="bookmarklet-link"
+           href="javascript:void(function(){{var s=document.createElement('script');s.src='http://{host}/overlay.js?t='+Date.now();document.body.appendChild(s)}})();">
+            ThrowSync
+        </a>
+
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">Gehe auf <strong>Autodarts</strong> oder <strong>Darthelfer</strong></div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">Klicke auf <strong>ThrowSync</strong> in der Lesezeichen-Leiste</div>
+        </div>
+        <p class="note">Nochmal klicken = Overlay ein/ausblenden. Funktioniert auch im Fullscreen (F11)!</p>
+    </div>
+
+    <div class="card">
+        <h2>Vorschau</h2>
+        <p>So sieht das HUD am unteren Bildschirmrand aus:</p>
+        <div class="preview">
+            <div class="preview-bar">
+                <span style="font-size:9px;color:rgba(255,255,255,0.25);font-weight:600;letter-spacing:1px;">THROWSYNC</span>
+                <span style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 6px #10b981;display:inline-block;"></span>
+                <span style="width:1px;height:24px;background:rgba(255,255,255,0.15);display:inline-block;"></span>
+                <span><span class="p-label">Aufnahme</span><br><span class="p-val p-score">140</span></span>
+                <span style="width:1px;height:24px;background:rgba(255,255,255,0.15);display:inline-block;"></span>
+                <span><span class="p-label">Rest</span><br><span class="p-val p-rest">161</span></span>
+                <span style="width:1px;height:24px;background:rgba(255,255,255,0.15);display:inline-block;"></span>
+                <span><span class="p-label">Letzter Wurf</span><br><span class="p-val p-throw">T20</span></span>
+            </div>
+        </div>
+        <p class="note" style="margin-top:12px;">
+            Bei Events (180, Bust, Match Won) erscheinen Toasts oben und Clips als Overlay.
+            <br>Kleiner lila Knopf &#x25C6; unten rechts = HUD ein/ausblenden.
+        </p>
+    </div>
+
+    <div class="card">
+        <h2>Alternativ: OBS Browser Source</h2>
+        <p>URL: <code>http://{host}/display</code></p>
+        <p class="note">Als Browser-Source in OBS einfuegen (transparenter Hintergrund).</p>
+    </div>
+</body></html>"""
+    return HTMLResponse(html)
 
 
 def main():
