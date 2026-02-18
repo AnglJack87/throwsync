@@ -220,7 +220,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.8.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.9.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1842,6 +1842,189 @@ async def set_language(data: dict):
     config_manager.set("language", lang)
     config_manager.save()
     return {"success": True, "language": lang}
+
+
+# ─── Music Player ─────────────────────────────────────────────────────────────
+
+@app.get("/music/{filename}")
+async def serve_music(filename: str):
+    """Serve a music file."""
+    from paths import MUSIC_DIR
+    path = MUSIC_DIR / filename
+    if not path.exists():
+        raise HTTPException(404, "File not found")
+    ct_map = {'.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg',
+              '.wav': 'audio/wav', '.flac': 'audio/flac', '.aac': 'audio/aac'}
+    ct = ct_map.get(path.suffix.lower(), 'audio/mpeg')
+    return FileResponse(path, media_type=ct)
+
+
+@app.get("/api/music/files")
+async def list_music_files():
+    """List uploaded music files."""
+    from paths import MUSIC_DIR
+    exts = {'.mp3', '.m4a', '.ogg', '.wav', '.flac', '.aac'}
+    files = []
+    for f in sorted(MUSIC_DIR.iterdir()):
+        if f.suffix.lower() in exts:
+            files.append({"filename": f.name, "size": f.stat().st_size})
+    return {"files": files}
+
+
+@app.post("/api/music/upload")
+async def upload_music(file: UploadFile):
+    """Upload a music file."""
+    from paths import MUSIC_DIR
+    allowed = {'.mp3', '.m4a', '.ogg', '.wav', '.flac', '.aac'}
+    ext = '.' + file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in allowed:
+        raise HTTPException(400, f"Ungültiges Format: {ext}")
+    safe = "".join(c for c in file.filename if c.isalnum() or c in '.-_ ').strip()
+    path = MUSIC_DIR / safe
+    with open(path, 'wb') as f:
+        content = await file.read()
+        f.write(content)
+    return {"success": True, "filename": safe, "size": len(content)}
+
+
+@app.delete("/api/music/files/{filename}")
+async def delete_music_file(filename: str):
+    """Delete a music file."""
+    from paths import MUSIC_DIR
+    path = MUSIC_DIR / filename
+    if path.exists():
+        path.unlink()
+    return {"success": True}
+
+
+@app.get("/api/music/config")
+async def get_music_config():
+    """Get music player configuration."""
+    return config_manager.get("music_config", {
+        "volume": 0.3, "shuffle": False, "repeat": False,
+        "duck_on_event": True, "duck_level": 0.1, "playlist": [],
+    })
+
+
+@app.post("/api/music/config")
+async def save_music_config(data: dict):
+    """Save music player configuration."""
+    config_manager.set("music_config", data)
+    config_manager.save()
+    return {"success": True}
+
+
+# ─── Player Profiles ─────────────────────────────────────────────────────────
+
+@app.get("/api/profiles/players")
+async def get_player_profiles():
+    """Get all player profiles."""
+    profiles = config_manager.get("player_profiles", [])
+    active_id = config_manager.get("active_player", "")
+    return {"profiles": profiles, "active": active_id}
+
+
+@app.post("/api/profiles/players")
+async def create_player_profile(data: dict):
+    """Create a new player profile."""
+    from player_profiles import create_profile
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(400, "Name required")
+    avatar = data.get("avatar", "\U0001F3AF")
+    profile = create_profile(name, avatar)
+    profiles = config_manager.get("player_profiles", [])
+    profiles.append(profile)
+    config_manager.set("player_profiles", profiles)
+    config_manager.save()
+    return {"success": True, "profile": profile}
+
+
+@app.put("/api/profiles/players/{profile_id}")
+async def update_player_profile(profile_id: str, data: dict):
+    """Update a player profile."""
+    profiles = config_manager.get("player_profiles", [])
+    for i, p in enumerate(profiles):
+        if p.get("id") == profile_id:
+            # Merge update data but keep stats and id
+            stats = p.get("stats", {})
+            profiles[i] = {**p, **data, "id": profile_id, "stats": stats}
+            config_manager.set("player_profiles", profiles)
+            config_manager.save()
+            return {"success": True, "profile": profiles[i]}
+    raise HTTPException(404, "Profile not found")
+
+
+@app.delete("/api/profiles/players/{profile_id}")
+async def delete_player_profile(profile_id: str):
+    """Delete a player profile."""
+    profiles = config_manager.get("player_profiles", [])
+    profiles = [p for p in profiles if p.get("id") != profile_id]
+    config_manager.set("player_profiles", profiles)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.post("/api/profiles/players/{profile_id}/activate")
+async def activate_player_profile(profile_id: str):
+    """Set the active player (triggers walk-on, LED theme switch)."""
+    profiles = config_manager.get("player_profiles", [])
+    profile = next((p for p in profiles if p.get("id") == profile_id), None)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    config_manager.set("active_player", profile_id)
+    config_manager.save()
+    # Broadcast player change to all clients
+    await broadcast_ws({
+        "type": "player_activated",
+        "profile": profile,
+    })
+    # Play walk-on sound if assigned
+    if profile.get("walk_on_sound"):
+        await broadcast_ws({
+            "type": "caller_play",
+            "sounds": [{"key": "walk_on", "sound": profile["walk_on_sound"], "volume": 1.0, "priority": 2}],
+            "event": "walk_on",
+            "volume": config_manager.get("caller_config", {}).get("volume", 0.8),
+            "priority": 2,
+        })
+    # Apply LED color if set
+    if profile.get("led_color"):
+        await broadcast_ws({
+            "type": "player_led_theme",
+            "color": profile["led_color"],
+            "brightness": profile.get("led_brightness", 180),
+            "effect": profile.get("led_effect", 0),
+        })
+    return {"success": True, "profile": profile}
+
+
+@app.post("/api/profiles/players/{profile_id}/stats")
+async def update_player_stats(profile_id: str, data: dict):
+    """Update player stats with a game event."""
+    from player_profiles import update_stats
+    profiles = config_manager.get("player_profiles", [])
+    for i, p in enumerate(profiles):
+        if p.get("id") == profile_id:
+            profiles[i] = update_stats(p, data.get("event", ""), data)
+            config_manager.set("player_profiles", profiles)
+            config_manager.save()
+            return {"success": True, "stats": profiles[i].get("stats", {})}
+    raise HTTPException(404, "Profile not found")
+
+
+@app.post("/api/profiles/players/{profile_id}/reset-stats")
+async def reset_player_stats(profile_id: str):
+    """Reset player stats."""
+    from player_profiles import empty_stats
+    profiles = config_manager.get("player_profiles", [])
+    for i, p in enumerate(profiles):
+        if p.get("id") == profile_id:
+            profiles[i]["stats"] = empty_stats()
+            config_manager.set("player_profiles", profiles)
+            config_manager.save()
+            return {"success": True}
+    raise HTTPException(404, "Profile not found")
 
 
 # ─── Display Overlay Test (continued) ────────────────────────────────────────

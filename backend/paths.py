@@ -37,6 +37,9 @@ FIRMWARE_DIR = DATA_DIR / "firmware"
 # Ensure writable dirs exist
 SOUNDS_DIR.mkdir(exist_ok=True)
 CLIPS_DIR.mkdir(exist_ok=True)
+
+MUSIC_DIR = DATA_DIR / "music"
+MUSIC_DIR.mkdir(exist_ok=True)
 FIRMWARE_DIR.mkdir(exist_ok=True)
 
 

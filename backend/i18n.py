@@ -33,6 +33,12 @@ TRANSLATIONS = {
     "nav.settings": {
         "de": "Einstellungen", "en": "Settings", "nl": "Instellingen", "fr": "Param\u00e8tres",
     },
+    "nav.stats": {
+        "de": "Statistiken", "en": "Statistics", "nl": "Statistieken", "fr": "Statistiques",
+    },
+    "nav.music": {
+        "de": "Musik-Player", "en": "Music Player", "nl": "Muziekspeler", "fr": "Lecteur de musique",
+    },
 
     # ── Tabs ──
     "tab.led": {

@@ -678,6 +678,21 @@ const API = {
             console.error(`DELETE ${path}:`, e);
             return null;
         }
+    },
+
+    async put(path, data = {}) {
+        try {
+            const res = await fetch(`${this.base}${path}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+        } catch (e) {
+            console.error(`PUT ${path}:`, e);
+            return null;
+        }
     }
 };
 
@@ -818,6 +833,9 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, versi
         { id: 'leds', icon: '\u25C6', label: 'LED' },
         { id: 'autodarts', icon: '\u25CE', label: 'Autodarts' },
         { id: 'events', icon: '\u26A1', label: t('nav.events', 'Events & Caller') },
+        { id: 'players', icon: '\uD83C\uDFAD', label: 'Spieler' },
+        { id: 'stats', icon: '\uD83D\uDCCA', label: t('nav.stats', 'Statistiken') },
+        { id: 'music', icon: '\uD83C\uDFB5', label: t('nav.music', 'Musik') },
         { id: 'flash', icon: '\u21AF', label: 'Firmware' },
         { id: 'presets', icon: '\u2605', label: 'Presets' },
         { id: 'settings', icon: '\u2699', label: t('nav.settings', 'Einstellungen') },
@@ -4606,6 +4624,790 @@ function PresetsPage({ devices }) {
 
 // ─── Settings Page ───────────────────────────────────────────────────────────
 
+// ─── Players Page ────────────────────────────────────────────────────────────
+
+function PlayersPage() {
+    const [profiles, setProfiles] = useState([]);
+    const [activeId, setActiveId] = useState('');
+    const [editProfile, setEditProfile] = useState(null);
+    const [showCreate, setShowCreate] = useState(false);
+    const [newName, setNewName] = useState('');
+    const [newAvatar, setNewAvatar] = useState('\uD83C\uDFAF');
+    const [soundFiles, setSoundFiles] = useState([]);
+    const [clipFiles, setClipFiles] = useState([]);
+    const toast = useToast();
+    const { t } = useI18n();
+
+    const avatars = [
+        '\uD83C\uDFAF', '\uD83D\uDD25', '\uD83D\uDC51', '\uD83E\uDD47', '\uD83C\uDFC6',
+        '\uD83D\uDC8E', '\uD83C\uDF1F', '\u26A1', '\uD83D\uDE80', '\uD83D\uDC0D',
+        '\uD83D\uDC3A', '\uD83E\uDD81', '\uD83E\uDD85', '\uD83E\uDDCA', '\uD83D\uDC7B',
+        '\uD83E\uDD16', '\uD83C\uDFB3', '\uD83C\uDFAE', '\uD83C\uDFB5', '\uD83C\uDFB8',
+    ];
+
+    const load = () => {
+        API.get('/api/profiles/players').then(d => {
+            setProfiles(d?.profiles || []);
+            setActiveId(d?.active || '');
+        });
+    };
+
+    useEffect(() => {
+        load();
+        API.get('/api/caller/files').then(d => setSoundFiles(d?.sounds || []));
+        API.get('/api/clips/files').then(d => setClipFiles(d?.files || []));
+    }, []);
+
+    const createProfile = async () => {
+        if (!newName.trim()) return;
+        await API.post('/api/profiles/players', { name: newName, avatar: newAvatar });
+        setNewName('');
+        setShowCreate(false);
+        load();
+        toast(t('common.success', 'Erstellt!'), 'success');
+    };
+
+    const activate = async (id) => {
+        await API.post(`/api/profiles/players/${id}/activate`);
+        setActiveId(id);
+        toast('Walk-On!', 'success');
+    };
+
+    const deleteProfile = async (id) => {
+        if (!confirm('Spieler-Profil löschen?')) return;
+        await API.del(`/api/profiles/players/${id}`);
+        load();
+    };
+
+    const saveEdit = async () => {
+        if (!editProfile) return;
+        const { id, stats, created, ...data } = editProfile;
+        await API.put(`/api/profiles/players/${id}`, data);
+        setEditProfile(null);
+        load();
+        toast(t('common.save', 'Gespeichert!'), 'success');
+    };
+
+    const resetStats = async (id) => {
+        if (!confirm('Statistiken zurücksetzen?')) return;
+        await API.post(`/api/profiles/players/${id}/reset-stats`);
+        load();
+    };
+
+    const checkoutRate = (stats) => {
+        const total = (stats?.checkouts_hit || 0) + (stats?.checkouts_missed || 0);
+        return total > 0 ? ((stats.checkouts_hit / total) * 100).toFixed(1) : '—';
+    };
+
+    return (
+        <div>
+            <div className="page-header">
+                <h2>Spieler-Profile</h2>
+                <p>Walk-On Sounds, LED-Themes und Statistiken pro Spieler</p>
+            </div>
+
+            {/* Player Cards */}
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, marginBottom: 16}}>
+                {profiles.map(p => {
+                    const isActive = p.id === activeId;
+                    const stats = p.stats || {};
+                    return (
+                        <div key={p.id} className="card" style={{
+                            padding: 16,
+                            border: isActive ? '2px solid var(--accent)' : '1px solid var(--border)',
+                            background: isActive ? 'rgba(139,92,246,0.06)' : 'var(--bg-card)',
+                        }}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12}}>
+                                <span style={{fontSize: 32}}>{p.avatar || '\uD83C\uDFAF'}</span>
+                                <div style={{flex: 1}}>
+                                    <div style={{fontWeight: 700, fontSize: 16}}>{p.name}</div>
+                                    {isActive && <span style={{fontSize: 11, color: 'var(--accent)', fontWeight: 600}}>AKTIV</span>}
+                                </div>
+                                <div style={{width: 24, height: 24, borderRadius: '50%', background: p.led_color || '#8b5cf6', border: '2px solid var(--border)'}} title="LED-Farbe" />
+                            </div>
+
+                            {/* Mini Stats */}
+                            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 12}}>
+                                {[
+                                    { label: 'Avg', value: stats.avg_score || '—' },
+                                    { label: 'Highest', value: stats.highest_score || '—' },
+                                    { label: '180s', value: stats.total_180s || 0 },
+                                    { label: 'Legs', value: stats.legs_won || 0 },
+                                    { label: 'Matches', value: stats.matches_won || 0 },
+                                    { label: 'Checkout%', value: checkoutRate(stats) },
+                                ].map(s => (
+                                    <div key={s.label} style={{textAlign: 'center', padding: '4px 0'}}>
+                                        <div style={{fontSize: 11, color: 'var(--text-dim)'}}>{s.label}</div>
+                                        <div style={{fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums'}}>{s.value}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Quick Info */}
+                            <div style={{fontSize: 12, color: 'var(--text-dim)', marginBottom: 10}}>
+                                {p.walk_on_sound && <span>🎵 {p.walk_on_sound} </span>}
+                                {p.victory_clip && <span>🎬 Victory-Clip </span>}
+                            </div>
+
+                            {/* Actions */}
+                            <div style={{display: 'flex', gap: 6}}>
+                                {!isActive && (
+                                    <button className="btn btn-primary" style={{flex: 1, fontSize: 12}} onClick={() => activate(p.id)}>
+                                        ▶ Aktivieren
+                                    </button>
+                                )}
+                                <button className="btn" style={{fontSize: 12}} onClick={() => setEditProfile({...p})}>
+                                    ✏ Bearbeiten
+                                </button>
+                                <button className="btn" style={{fontSize: 12, color: '#f44'}} onClick={() => deleteProfile(p.id)}>
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {/* Add Player Card */}
+                <div className="card" style={{
+                    padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    minHeight: 200, cursor: 'pointer', border: '2px dashed var(--border)',
+                    opacity: 0.6, transition: 'opacity 0.2s',
+                }} onClick={() => setShowCreate(true)}
+                   onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                   onMouseLeave={e => e.currentTarget.style.opacity = 0.6}>
+                    <div style={{textAlign: 'center'}}>
+                        <div style={{fontSize: 36, marginBottom: 8}}>+</div>
+                        <div style={{fontSize: 14}}>Neuer Spieler</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Create Modal */}
+            {showCreate && (
+                <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
+                    <div className="modal" style={{maxWidth: 400}}>
+                        <h3>Neuer Spieler</h3>
+                        <div style={{marginBottom: 12}}>
+                            <label style={{fontSize: 13, color: 'var(--text-dim)'}}>Name</label>
+                            <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                                placeholder="Name eingeben..."
+                                style={{width: '100%', padding: '8px 12px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, marginTop: 4}}
+                                autoFocus onKeyDown={e => e.key === 'Enter' && createProfile()} />
+                        </div>
+                        <div style={{marginBottom: 16}}>
+                            <label style={{fontSize: 13, color: 'var(--text-dim)'}}>Avatar</label>
+                            <div style={{display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4}}>
+                                {avatars.map(a => (
+                                    <button key={a} onClick={() => setNewAvatar(a)}
+                                        style={{
+                                            fontSize: 22, padding: '4px 6px', background: newAvatar === a ? 'var(--accent)' : 'transparent',
+                                            border: newAvatar === a ? 'none' : '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
+                                        }}>{a}</button>
+                                ))}
+                            </div>
+                        </div>
+                        <div style={{display: 'flex', gap: 8}}>
+                            <button className="btn btn-primary" style={{flex: 1}} onClick={createProfile}>Erstellen</button>
+                            <button className="btn" onClick={() => setShowCreate(false)}>Abbrechen</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Modal */}
+            {editProfile && (
+                <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditProfile(null)}>
+                    <div className="modal" style={{maxWidth: 520, maxHeight: '90vh', overflow: 'auto'}}>
+                        <h3>{editProfile.avatar} {editProfile.name} — Profil bearbeiten</h3>
+
+                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16}}>
+                            <div>
+                                <label style={{fontSize: 12, color: 'var(--text-dim)'}}>Name</label>
+                                <input type="text" value={editProfile.name} onChange={e => setEditProfile({...editProfile, name: e.target.value})}
+                                    style={{width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4}} />
+                            </div>
+                            <div>
+                                <label style={{fontSize: 12, color: 'var(--text-dim)'}}>LED-Farbe</label>
+                                <input type="color" value={editProfile.led_color || '#8b5cf6'} onChange={e => setEditProfile({...editProfile, led_color: e.target.value})}
+                                    style={{width: '100%', height: 34, border: 'none', borderRadius: 4, cursor: 'pointer'}} />
+                            </div>
+                        </div>
+
+                        <div style={{marginBottom: 12}}>
+                            <label style={{fontSize: 12, color: 'var(--text-dim)'}}>Avatar</label>
+                            <div style={{display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4}}>
+                                {avatars.map(a => (
+                                    <button key={a} onClick={() => setEditProfile({...editProfile, avatar: a})}
+                                        style={{
+                                            fontSize: 20, padding: '3px 5px',
+                                            background: editProfile.avatar === a ? 'var(--accent)' : 'transparent',
+                                            border: editProfile.avatar === a ? 'none' : '1px solid var(--border)',
+                                            borderRadius: 4, cursor: 'pointer',
+                                        }}>{a}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div style={{marginBottom: 12}}>
+                            <label style={{fontSize: 12, color: 'var(--text-dim)'}}>🎵 Walk-On Sound</label>
+                            <select value={editProfile.walk_on_sound || ''} onChange={e => setEditProfile({...editProfile, walk_on_sound: e.target.value})}
+                                style={{width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4}}>
+                                <option value="">— Kein Walk-On —</option>
+                                {soundFiles.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                            </select>
+                        </div>
+
+                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12}}>
+                            <div>
+                                <label style={{fontSize: 12, color: 'var(--text-dim)'}}>🎬 Victory-Clip</label>
+                                <select value={editProfile.victory_clip || ''} onChange={e => setEditProfile({...editProfile, victory_clip: e.target.value})}
+                                    style={{width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4}}>
+                                    <option value="">— Kein Clip —</option>
+                                    {clipFiles.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{fontSize: 12, color: 'var(--text-dim)'}}>💥 Bust-Clip</label>
+                                <select value={editProfile.bust_clip || ''} onChange={e => setEditProfile({...editProfile, bust_clip: e.target.value})}
+                                    style={{width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4}}>
+                                    <option value="">— Kein Clip —</option>
+                                    {clipFiles.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style={{marginBottom: 12}}>
+                            <label style={{fontSize: 12, color: 'var(--text-dim)'}}>LED-Helligkeit</label>
+                            <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+                                <input type="range" min="10" max="255" value={editProfile.led_brightness || 180}
+                                    onChange={e => setEditProfile({...editProfile, led_brightness: parseInt(e.target.value)})}
+                                    style={{flex: 1, accentColor: 'var(--accent)'}} />
+                                <span style={{fontFamily: 'monospace', fontSize: 13, minWidth: 30}}>{editProfile.led_brightness || 180}</span>
+                            </div>
+                        </div>
+
+                        {/* Stats Display */}
+                        <div style={{padding: 12, background: 'var(--bg)', borderRadius: 8, marginBottom: 16}}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8}}>
+                                <span style={{fontWeight: 600, fontSize: 14}}>Statistiken</span>
+                                <button className="btn" style={{fontSize: 11, padding: '2px 8px'}} onClick={() => resetStats(editProfile.id)}>Reset</button>
+                            </div>
+                            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 12}}>
+                                {[
+                                    { label: 'Avg Score', value: editProfile.stats?.avg_score || '—' },
+                                    { label: 'Highest', value: editProfile.stats?.highest_score || '—' },
+                                    { label: '180s', value: editProfile.stats?.total_180s || 0 },
+                                    { label: 'Legs Won', value: editProfile.stats?.legs_won || 0 },
+                                    { label: 'Matches Won', value: editProfile.stats?.matches_won || 0 },
+                                    { label: 'Checkout%', value: checkoutRate(editProfile.stats || {}) },
+                                    { label: 'Bullseyes', value: editProfile.stats?.total_bullseyes || 0 },
+                                    { label: 'Best C/O', value: editProfile.stats?.best_checkout || '—' },
+                                    { label: 'Games', value: editProfile.stats?.games_played || 0 },
+                                ].map(s => (
+                                    <div key={s.label} style={{textAlign: 'center', padding: 4, background: 'var(--bg-card)', borderRadius: 4}}>
+                                        <div style={{color: 'var(--text-dim)', fontSize: 10}}>{s.label}</div>
+                                        <div style={{fontWeight: 600, fontSize: 14}}>{s.value}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div style={{display: 'flex', gap: 8}}>
+                            <button className="btn btn-primary" style={{flex: 1}} onClick={saveEdit}>{t('common.save', 'Speichern')}</button>
+                            <button className="btn" onClick={() => setEditProfile(null)}>{t('common.cancel', 'Abbrechen')}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+// ─── Stats Dashboard ─────────────────────────────────────────────────────────
+
+function StatsPage() {
+    const [profiles, setProfiles] = useState([]);
+    const [selectedId, setSelectedId] = useState('all');
+    const { t } = useI18n();
+
+    useEffect(() => {
+        API.get('/api/profiles/players').then(d => {
+            setProfiles(d?.profiles || []);
+        });
+    }, []);
+
+    // Aggregate stats across all or single player
+    const getStats = () => {
+        const targets = selectedId === 'all' ? profiles : profiles.filter(p => p.id === selectedId);
+        if (targets.length === 0) return null;
+        const agg = {
+            games_played: 0, legs_won: 0, matches_won: 0,
+            highest_score: 0, total_180s: 0, total_bullseyes: 0,
+            checkouts_hit: 0, checkouts_missed: 0, best_checkout: 0,
+            all_scores: [],
+        };
+        targets.forEach(p => {
+            const s = p.stats || {};
+            agg.games_played += s.games_played || 0;
+            agg.legs_won += s.legs_won || 0;
+            agg.matches_won += s.matches_won || 0;
+            agg.total_180s += s.total_180s || 0;
+            agg.total_bullseyes += s.total_bullseyes || 0;
+            agg.checkouts_hit += s.checkouts_hit || 0;
+            agg.checkouts_missed += s.checkouts_missed || 0;
+            if ((s.highest_score || 0) > agg.highest_score) agg.highest_score = s.highest_score;
+            if ((s.best_checkout || 0) > agg.best_checkout) agg.best_checkout = s.best_checkout;
+            agg.all_scores.push(...(s.scores_history || []));
+        });
+        agg.avg_score = agg.all_scores.length > 0
+            ? (agg.all_scores.reduce((a, b) => a + b, 0) / agg.all_scores.length).toFixed(1)
+            : '—';
+        const coTotal = agg.checkouts_hit + agg.checkouts_missed;
+        agg.checkout_rate = coTotal > 0 ? ((agg.checkouts_hit / coTotal) * 100).toFixed(1) + '%' : '—';
+        return agg;
+    };
+
+    // Score distribution histogram
+    const getDistribution = () => {
+        const targets = selectedId === 'all' ? profiles : profiles.filter(p => p.id === selectedId);
+        const scores = [];
+        targets.forEach(p => scores.push(...(p.stats?.scores_history || [])));
+        const bins = [
+            { label: '0-20', min: 0, max: 20, count: 0, color: '#ef4444' },
+            { label: '21-40', min: 21, max: 40, count: 0, color: '#f97316' },
+            { label: '41-60', min: 41, max: 60, count: 0, color: '#eab308' },
+            { label: '61-80', min: 61, max: 80, count: 0, color: '#84cc16' },
+            { label: '81-100', min: 81, max: 100, count: 0, color: '#22c55e' },
+            { label: '101-120', min: 101, max: 120, count: 0, color: '#14b8a6' },
+            { label: '121-140', min: 121, max: 140, count: 0, color: '#06b6d4' },
+            { label: '141-160', min: 141, max: 160, count: 0, color: '#3b82f6' },
+            { label: '161-180', min: 161, max: 180, count: 0, color: '#8b5cf6' },
+        ];
+        scores.forEach(s => {
+            const bin = bins.find(b => s >= b.min && s <= b.max);
+            if (bin) bin.count++;
+        });
+        return bins;
+    };
+
+    const stats = getStats();
+    const dist = getDistribution();
+    const maxCount = Math.max(...dist.map(b => b.count), 1);
+
+    const statCards = stats ? [
+        { icon: '🎯', label: 'Avg Score', value: stats.avg_score, big: true },
+        { icon: '🔥', label: 'Highest Score', value: stats.highest_score || '—' },
+        { icon: '💯', label: '180s', value: stats.total_180s },
+        { icon: '🎯', label: 'Bullseyes', value: stats.total_bullseyes },
+        { icon: '🏆', label: 'Matches Won', value: stats.matches_won },
+        { icon: '✅', label: 'Legs Won', value: stats.legs_won },
+        { icon: '🎮', label: 'Games Played', value: stats.games_played },
+        { icon: '🎰', label: 'Checkout %', value: stats.checkout_rate },
+        { icon: '⭐', label: 'Best Checkout', value: stats.best_checkout || '—' },
+        { icon: '✓', label: 'Checkouts Hit', value: stats.checkouts_hit },
+        { icon: '✗', label: 'Checkouts Missed', value: stats.checkouts_missed },
+    ] : [];
+
+    return (
+        <div>
+            <div className="page-header">
+                <h2>📊 {t('nav.stats', 'Statistiken')}</h2>
+                <p>Spieler-Leistung und Score-Verteilung</p>
+            </div>
+
+            {/* Player Filter */}
+            <div className="card" style={{padding: 12, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8}}>
+                <span style={{fontSize: 13, color: 'var(--text-dim)'}}>Spieler:</span>
+                <button className={'btn ' + (selectedId === 'all' ? 'btn-primary' : '')}
+                    style={{fontSize: 12, padding: '4px 10px'}}
+                    onClick={() => setSelectedId('all')}>
+                    Alle
+                </button>
+                {profiles.map(p => (
+                    <button key={p.id} className={'btn ' + (selectedId === p.id ? 'btn-primary' : '')}
+                        style={{fontSize: 12, padding: '4px 10px'}}
+                        onClick={() => setSelectedId(p.id)}>
+                        {p.avatar} {p.name}
+                    </button>
+                ))}
+            </div>
+
+            {profiles.length === 0 && (
+                <div className="card" style={{padding: 32, textAlign: 'center', color: 'var(--text-dim)'}}>
+                    <div style={{fontSize: 48, marginBottom: 12}}>📊</div>
+                    <p>Noch keine Spieler-Profile vorhanden.</p>
+                    <p style={{fontSize: 13}}>Erstelle Profile unter "Spieler" um Statistiken zu sammeln.</p>
+                </div>
+            )}
+
+            {stats && <>
+                {/* Big Stat Cards */}
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 16}}>
+                    {statCards.map(c => (
+                        <div key={c.label} className="card" style={{
+                            padding: '14px 12px', textAlign: 'center',
+                            background: c.big ? 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.1))' : 'var(--bg-card)',
+                        }}>
+                            <div style={{fontSize: 20, marginBottom: 4}}>{c.icon}</div>
+                            <div style={{fontSize: c.big ? 28 : 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: c.big ? 'var(--accent)' : 'var(--text)'}}>
+                                {c.value}
+                            </div>
+                            <div style={{fontSize: 11, color: 'var(--text-dim)', marginTop: 2}}>{c.label}</div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Score Distribution Chart */}
+                <div className="card" style={{padding: 16}}>
+                    <h4 style={{margin: '0 0 12px'}}>Score-Verteilung (3-Dart)</h4>
+                    <div style={{display: 'flex', alignItems: 'flex-end', gap: 4, height: 140}}>
+                        {dist.map(bin => (
+                            <div key={bin.label} style={{flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+                                <div style={{fontSize: 10, color: 'var(--text-dim)', marginBottom: 4}}>
+                                    {bin.count > 0 ? bin.count : ''}
+                                </div>
+                                <div style={{
+                                    width: '100%', background: bin.color,
+                                    height: `${Math.max((bin.count / maxCount) * 110, bin.count > 0 ? 4 : 0)}px`,
+                                    borderRadius: '4px 4px 0 0', transition: 'height 0.3s ease',
+                                    opacity: bin.count > 0 ? 1 : 0.15,
+                                }} />
+                                <div style={{fontSize: 9, color: 'var(--text-dim)', marginTop: 4, whiteSpace: 'nowrap'}}>
+                                    {bin.label}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Leaderboard if multiple players */}
+                {profiles.length > 1 && selectedId === 'all' && (
+                    <div className="card" style={{padding: 16, marginTop: 12}}>
+                        <h4 style={{margin: '0 0 12px'}}>🏆 Leaderboard</h4>
+                        <table style={{width: '100%', borderCollapse: 'collapse', fontSize: 13}}>
+                            <thead>
+                                <tr style={{borderBottom: '1px solid var(--border)', color: 'var(--text-dim)'}}>
+                                    <th style={{textAlign: 'left', padding: '6px 8px'}}>#</th>
+                                    <th style={{textAlign: 'left', padding: '6px 8px'}}>Spieler</th>
+                                    <th style={{textAlign: 'right', padding: '6px 8px'}}>Avg</th>
+                                    <th style={{textAlign: 'right', padding: '6px 8px'}}>180s</th>
+                                    <th style={{textAlign: 'right', padding: '6px 8px'}}>Legs</th>
+                                    <th style={{textAlign: 'right', padding: '6px 8px'}}>Matches</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {[...profiles]
+                                    .sort((a, b) => (b.stats?.avg_score || 0) - (a.stats?.avg_score || 0))
+                                    .map((p, i) => (
+                                        <tr key={p.id} style={{borderBottom: '1px solid var(--border)'}}>
+                                            <td style={{padding: '6px 8px', fontWeight: 600}}>
+                                                {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                                            </td>
+                                            <td style={{padding: '6px 8px'}}>{p.avatar} {p.name}</td>
+                                            <td style={{textAlign: 'right', padding: '6px 8px', fontVariantNumeric: 'tabular-nums', fontWeight: 600}}>
+                                                {p.stats?.avg_score || '—'}
+                                            </td>
+                                            <td style={{textAlign: 'right', padding: '6px 8px'}}>{p.stats?.total_180s || 0}</td>
+                                            <td style={{textAlign: 'right', padding: '6px 8px'}}>{p.stats?.legs_won || 0}</td>
+                                            <td style={{textAlign: 'right', padding: '6px 8px'}}>{p.stats?.matches_won || 0}</td>
+                                        </tr>
+                                    ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </>}
+        </div>
+    );
+}
+
+
+// ─── Music Player ────────────────────────────────────────────────────────────
+
+function MusicPage() {
+    const [musicFiles, setMusicFiles] = useState([]);
+    const [playlist, setPlaylist] = useState([]);
+    const [currentTrack, setCurrentTrack] = useState(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [volume, setVolume] = useState(0.3);
+    const [shuffle, setShuffle] = useState(false);
+    const [repeat, setRepeat] = useState(false);
+    const [duckOnEvent, setDuckOnEvent] = useState(true);
+    const [duckLevel, setDuckLevel] = useState(0.1);
+    const [uploading, setUploading] = useState(false);
+    const audioRef = useRef(null);
+    const toast = useToast();
+    const { t } = useI18n();
+
+    useEffect(() => {
+        API.get('/api/music/files').then(d => setMusicFiles(d?.files || []));
+        API.get('/api/music/config').then(d => {
+            if (d) {
+                setVolume(d.volume ?? 0.3);
+                setShuffle(d.shuffle ?? false);
+                setRepeat(d.repeat ?? false);
+                setDuckOnEvent(d.duck_on_event ?? true);
+                setDuckLevel(d.duck_level ?? 0.1);
+                setPlaylist(d.playlist || []);
+            }
+        });
+    }, []);
+
+    const saveConfig = (updates = {}) => {
+        const cfg = { volume, shuffle, repeat, duck_on_event: duckOnEvent, duck_level: duckLevel, playlist, ...updates };
+        API.post('/api/music/config', cfg);
+    };
+
+    const uploadMusic = async (e) => {
+        const files = e.target.files;
+        if (!files?.length) return;
+        setUploading(true);
+        for (const file of files) {
+            const fd = new FormData();
+            fd.append('file', file);
+            await fetch('/api/music/upload', { method: 'POST', body: fd });
+        }
+        setUploading(false);
+        API.get('/api/music/files').then(d => setMusicFiles(d?.files || []));
+        toast(`${files.length} Datei(en) hochgeladen`, 'success');
+    };
+
+    const deleteFile = async (filename) => {
+        await API.del(`/api/music/files/${encodeURIComponent(filename)}`);
+        setMusicFiles(f => f.filter(x => x.filename !== filename));
+        setPlaylist(p => p.filter(x => x !== filename));
+    };
+
+    const addToPlaylist = (filename) => {
+        if (playlist.includes(filename)) return;
+        const next = [...playlist, filename];
+        setPlaylist(next);
+        saveConfig({ playlist: next });
+    };
+
+    const removeFromPlaylist = (filename) => {
+        const next = playlist.filter(x => x !== filename);
+        setPlaylist(next);
+        saveConfig({ playlist: next });
+    };
+
+    const playTrack = (filename) => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+        }
+        const audio = new Audio(`/music/${filename}`);
+        audio.volume = volume;
+        audio.onended = () => playNext(filename);
+        audio.play().catch(() => {});
+        audioRef.current = audio;
+        setCurrentTrack(filename);
+        setIsPlaying(true);
+    };
+
+    const playNext = (currentFile) => {
+        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+        if (list.length === 0) return;
+        const idx = list.indexOf(currentFile);
+        let nextIdx;
+        if (shuffle) {
+            nextIdx = Math.floor(Math.random() * list.length);
+        } else {
+            nextIdx = idx + 1;
+            if (nextIdx >= list.length) {
+                if (repeat) nextIdx = 0;
+                else { setIsPlaying(false); setCurrentTrack(null); return; }
+            }
+        }
+        playTrack(list[nextIdx]);
+    };
+
+    const togglePlay = () => {
+        if (!audioRef.current && musicFiles.length > 0) {
+            const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+            playTrack(list[0]);
+            return;
+        }
+        if (audioRef.current) {
+            if (isPlaying) {
+                audioRef.current.pause();
+                setIsPlaying(false);
+            } else {
+                audioRef.current.play();
+                setIsPlaying(true);
+            }
+        }
+    };
+
+    const skipNext = () => {
+        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+        playNext(currentTrack || list[0]);
+    };
+
+    const skipPrev = () => {
+        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+        const idx = list.indexOf(currentTrack);
+        const prevIdx = idx > 0 ? idx - 1 : list.length - 1;
+        playTrack(list[prevIdx]);
+    };
+
+    const changeVolume = (v) => {
+        setVolume(v);
+        if (audioRef.current) audioRef.current.volume = v;
+        saveConfig({ volume: v });
+    };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => { if (audioRef.current) audioRef.current.pause(); };
+    }, []);
+
+    const formatSize = (bytes) => {
+        if (bytes > 1024*1024) return (bytes / (1024*1024)).toFixed(1) + ' MB';
+        return (bytes / 1024).toFixed(0) + ' KB';
+    };
+
+    return (
+        <div>
+            <div className="page-header">
+                <h2>🎵 {t('nav.music', 'Musik-Player')}</h2>
+                <p>Hintergrundmusik während des Spiels</p>
+            </div>
+
+            {/* Now Playing / Transport */}
+            <div className="card" style={{padding: 16, marginBottom: 12, background: isPlaying ? 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.06))' : 'var(--bg-card)'}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
+                    <div style={{fontSize: 36}}>{isPlaying ? '🎶' : '🎵'}</div>
+                    <div style={{flex: 1}}>
+                        <div style={{fontWeight: 600, fontSize: 15}}>
+                            {currentTrack ? currentTrack.replace(/\.[^.]+$/, '') : 'Kein Track ausgewählt'}
+                        </div>
+                        <div style={{fontSize: 12, color: 'var(--text-dim)'}}>
+                            {isPlaying ? '▶ Spielt...' : '⏸ Pausiert'}
+                            {playlist.length > 0 && ` · ${playlist.length} in Playlist`}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Transport Controls */}
+                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12}}>
+                    <button onClick={() => { setShuffle(!shuffle); saveConfig({ shuffle: !shuffle }); }}
+                        className="btn" style={{fontSize: 16, padding: '4px 8px', opacity: shuffle ? 1 : 0.4}} title="Shuffle">🔀</button>
+                    <button onClick={skipPrev} className="btn" style={{fontSize: 18, padding: '4px 10px'}} title="Zurück">⏮</button>
+                    <button onClick={togglePlay} className="btn btn-primary" style={{fontSize: 22, padding: '6px 16px', borderRadius: 999}}>
+                        {isPlaying ? '⏸' : '▶'}
+                    </button>
+                    <button onClick={skipNext} className="btn" style={{fontSize: 18, padding: '4px 10px'}} title="Weiter">⏭</button>
+                    <button onClick={() => { setRepeat(!repeat); saveConfig({ repeat: !repeat }); }}
+                        className="btn" style={{fontSize: 16, padding: '4px 8px', opacity: repeat ? 1 : 0.4}} title="Repeat">🔁</button>
+                </div>
+
+                {/* Volume */}
+                <div style={{display: 'flex', alignItems: 'center', gap: 8, marginTop: 10}}>
+                    <span style={{fontSize: 14}}>🔈</span>
+                    <input type="range" min="0" max="1" step="0.05" value={volume}
+                        onChange={e => changeVolume(parseFloat(e.target.value))}
+                        style={{flex: 1, accentColor: 'var(--accent)'}} />
+                    <span style={{fontFamily: 'monospace', fontSize: 12, minWidth: 32}}>{Math.round(volume * 100)}%</span>
+                </div>
+
+                {/* Ducking */}
+                <div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8}}>
+                    <label style={{display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13}}>
+                        <input type="checkbox" checked={duckOnEvent}
+                            onChange={e => { setDuckOnEvent(e.target.checked); saveConfig({ duck_on_event: e.target.checked }); }}
+                            style={{accentColor: 'var(--accent)'}} />
+                        Musik leiser bei Caller/Crowd
+                    </label>
+                    {duckOnEvent && (
+                        <input type="range" min="0" max="0.5" step="0.05" value={duckLevel}
+                            onChange={e => { setDuckLevel(parseFloat(e.target.value)); saveConfig({ duck_level: parseFloat(e.target.value) }); }}
+                            style={{width: 80, accentColor: 'var(--accent)'}} title={`Duck-Level: ${Math.round(duckLevel*100)}%`} />
+                    )}
+                </div>
+            </div>
+
+            {/* Upload */}
+            <div className="card" style={{padding: 16, marginBottom: 12}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+                    <label className="btn btn-primary" style={{cursor: 'pointer'}}>
+                        {uploading ? '⏳ Hochladen...' : '📁 Musik hochladen'}
+                        <input type="file" accept=".mp3,.m4a,.ogg,.wav,.flac,.aac" multiple
+                            onChange={uploadMusic} style={{display: 'none'}} />
+                    </label>
+                    <span style={{fontSize: 12, color: 'var(--text-dim)'}}>MP3, M4A, OGG, WAV, FLAC, AAC</span>
+                </div>
+            </div>
+
+            {/* File List & Playlist */}
+            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12}}>
+                {/* All Files */}
+                <div className="card" style={{padding: 16}}>
+                    <h4 style={{margin: '0 0 10px'}}>📂 Musikdateien ({musicFiles.length})</h4>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflow: 'auto'}}>
+                        {musicFiles.map(f => (
+                            <div key={f.filename} style={{
+                                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
+                                background: currentTrack === f.filename ? 'rgba(139,92,246,0.12)' : 'transparent',
+                                borderRadius: 4, border: '1px solid var(--border)',
+                            }}>
+                                <button onClick={() => playTrack(f.filename)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--accent)'}}>
+                                    {currentTrack === f.filename && isPlaying ? '⏸' : '▶'}
+                                </button>
+                                <div style={{flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                    {f.filename.replace(/\.[^.]+$/, '')}
+                                </div>
+                                <span style={{fontSize: 11, color: 'var(--text-dim)'}}>{formatSize(f.size)}</span>
+                                <button onClick={() => addToPlaylist(f.filename)} title="Zur Playlist"
+                                    style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: playlist.includes(f.filename) ? 'var(--success)' : 'var(--text-dim)'}}>
+                                    {playlist.includes(f.filename) ? '✓' : '+'}
+                                </button>
+                                <button onClick={() => deleteFile(f.filename)} title="Löschen"
+                                    style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#f44'}}>✕</button>
+                            </div>
+                        ))}
+                        {musicFiles.length === 0 && (
+                            <div style={{textAlign: 'center', color: 'var(--text-dim)', padding: 20, fontSize: 13}}>
+                                Keine Musikdateien. Lade oben Dateien hoch.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Playlist */}
+                <div className="card" style={{padding: 16}}>
+                    <h4 style={{margin: '0 0 10px'}}>🎶 Playlist ({playlist.length})</h4>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflow: 'auto'}}>
+                        {playlist.map((filename, idx) => (
+                            <div key={filename + idx} style={{
+                                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
+                                background: currentTrack === filename ? 'rgba(139,92,246,0.12)' : 'transparent',
+                                borderRadius: 4, border: '1px solid var(--border)',
+                            }}>
+                                <span style={{fontSize: 11, color: 'var(--text-dim)', minWidth: 16}}>{idx + 1}.</span>
+                                <button onClick={() => playTrack(filename)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--accent)'}}>
+                                    {currentTrack === filename && isPlaying ? '⏸' : '▶'}
+                                </button>
+                                <div style={{flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                    {filename.replace(/\.[^.]+$/, '')}
+                                </div>
+                                <button onClick={() => removeFromPlaylist(filename)} title="Entfernen"
+                                    style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#f44'}}>✕</button>
+                            </div>
+                        ))}
+                        {playlist.length === 0 && (
+                            <div style={{textAlign: 'center', color: 'var(--text-dim)', padding: 20, fontSize: 13}}>
+                                Leer — klicke "+" bei Musikdateien um Songs zur Playlist hinzuzufügen.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
 function SettingsPage() {
     const [config, setConfig] = useState({});
     const [updateStatus, setUpdateStatus] = useState(null);
@@ -5260,7 +6062,7 @@ function FavoritesPanel({ currentEffect, currentDuration, onApply }) {
     };
 
     const deleteFav = async (id) => {
-        await API.delete(`/api/favorites/${id}`);
+        await API.del(`/api/favorites/${id}`);
         setFavorites(prev => prev.filter(f => f.id !== id));
     };
 
@@ -6506,6 +7308,9 @@ function App() {
             case 'leds': return <LEDControlPage devices={devices} />;
             case 'autodarts': return <AutodartsPage autodartsConnected={autodartsConnected} devices={devices} />;
             case 'events': return <EventsPage devices={devices} />;
+            case 'players': return <PlayersPage />;
+            case 'stats': return <StatsPage />;
+            case 'music': return <MusicPage />;
             case 'flash': return <FlashPage devices={devices} />;
             case 'presets': return <PresetsPage devices={devices} />;
             case 'settings': return <SettingsPage />;
