@@ -4712,6 +4712,30 @@ function SettingsPage() {
             </div>
 
             <div className="card">
+                <div className="card-title" style={{marginBottom: 12}}>Display Overlay</div>
+                <p style={{color: 'var(--text-dim)', fontSize: 13, marginBottom: 12}}>
+                    Zeigt Clips, Score-HUD und Event-Toasts als Overlay — ideal neben Autodarts/Darthelfer.
+                </p>
+                <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+                    <button className="btn btn-primary" onClick={() => {
+                        window.open('/display', 'throwsync-display',
+                            'width=800,height=200,menubar=no,toolbar=no,location=no,status=no');
+                    }}>
+                        🖥 Display als Popup öffnen
+                    </button>
+                    <button className="btn" onClick={() => {
+                        navigator.clipboard.writeText(window.location.origin + '/display');
+                        toast.show('URL kopiert!', 'success');
+                    }}>
+                        📋 URL kopieren
+                    </button>
+                </div>
+                <small style={{color: 'var(--text-dim)', marginTop: 8, display: 'block'}}>
+                    Popup-Fenster: Zieh es an den unteren Bildschirmrand über Autodarts. • OBS: Als Browser-Source {window.location.origin}/display einfügen.
+                </small>
+            </div>
+
+            <div className="card">
                 <div className="card-title" style={{marginBottom: 16}}>Systeminfo</div>
                 <div style={{fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2}}>
                     <div>Version: {updateStatus?.local_version || '?'}</div>

@@ -285,6 +285,14 @@ class AutodartsBoardConnection:
                            f"{segment.get('name','')} = {dart_score}pts (turn total: {self._turn_score})")
                 # Caller: broadcast single dart sound
                 await self._broadcast_caller("throw", payload)
+                # Broadcast throw data for display overlay
+                await self._broadcast_display_state({
+                    "type": "throw",
+                    "throw_text": segment.get("name", f"{dart_score}"),
+                    "points": dart_score,
+                    "turn_score": self._turn_score,
+                    "darts_in_turn": self._darts_in_turn,
+                })
                 
                 # Detect "my" player index: first throw in a match = me
                 if self._my_player_index < 0 and self._last_player_index >= 0:
@@ -506,6 +514,19 @@ class AutodartsBoardConnection:
         # ── Update score tracking ──
         if game_scores:
             self._last_scores = list(game_scores)
+            # Broadcast remaining scores for display overlay
+            remaining = None
+            if self._my_player_index >= 0 and self._my_player_index < len(game_scores):
+                remaining = game_scores[self._my_player_index]
+            elif player_index >= 0 and player_index < len(game_scores):
+                remaining = game_scores[player_index]
+            if remaining is not None:
+                await self._broadcast_display_state({
+                    "type": "state_update",
+                    "remaining": remaining,
+                    "player_index": player_index,
+                    "scores": game_scores,
+                })
 
     async def _dispatch_events(self, event_type: str, events: list):
         """Dispatch mapped events based on event type logic."""
@@ -792,6 +813,17 @@ class AutodartsBoardConnection:
                 await self.caller_callback(sounds, event_type, payload)
             except Exception as e:
                 logger.debug(f"Caller broadcast error: {e}")
+
+    async def _broadcast_display_state(self, data: dict):
+        """Broadcast game state to display overlay via WebSocket."""
+        if not self.caller_callback:
+            return
+        try:
+            # Use the same broadcast mechanism — caller_callback's parent has broadcast_ws
+            from main import broadcast_ws
+            await broadcast_ws({"type": "display_state", "data": data})
+        except Exception:
+            pass  # Display broadcasting is optional
 
     def _determine_caller_sounds(self, event_type: str, payload: dict) -> list:
         """Map game event to list of caller sound keys to play.

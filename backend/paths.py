@@ -25,6 +25,7 @@ else:
 # ── Read-only paths (bundled) ──
 FRONTEND_DIR = BUNDLE_DIR / "frontend"
 FRONTEND_HTML = FRONTEND_DIR / "index.html"
+DISPLAY_HTML = FRONTEND_DIR / "display.html"
 VERSION_FILE = BUNDLE_DIR / "VERSION"
 
 # ── Writable paths (user data) ──

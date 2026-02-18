@@ -7,7 +7,7 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.6.0/throwsync-1.6.0-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v1.6.0/throwsync-1.6.0-macos-arm64"
     },
-    "changelog": "# v1.6.0\n\n- 🎬 **Video-Clips** — MP4/GIF/WebM Overlay bei Events (Match Won, Bust, 180, etc.)\n- ⚡ **Caller v2 Audio Engine** — Preloading, Priority-Interrupt, 4s Timeout\n- 🔧 **Fix: Manifest-URL** — 404 behoben (korrekter GitHub-Pfad)\n- 🔧 **Fix: Version 0.0.0** — paths.py Integration im Updater\n- ⏱ **Caller schneller** — Bust-Delay 400ms → 200ms, Queue-Limit 3 Sounds",
+    "changelog": "# v1.6.0\n\n- 🎬 **Video-Clips** — MP4/GIF/WebM Overlay bei Events\n- 🖥 **Display Overlay** — Popup-Fenster mit Score-HUD, Clips, Event-Toasts\n- ⚡ **Caller v2** — Preloading, Priority-Interrupt, 4s Timeout, Queue-Limit\n- 🔧 **Manifest-URL Fix** — kein 404 mehr\n- 🔧 **Version-Erkennung Fix** — paths.py Integration",
     "size": 0,
     "min_python": "3.8",
     "released": "2026-02-17"

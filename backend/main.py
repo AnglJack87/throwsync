@@ -31,7 +31,7 @@ from updater import (
     DEFAULT_MANIFEST_URL, rollback_update,
 )
 import time as _time
-from paths import FROZEN, BUNDLE_DIR, DATA_DIR, FRONTEND_HTML, SOUNDS_DIR, CLIPS_DIR, FIRMWARE_DIR, get_version as get_app_version
+from paths import FROZEN, BUNDLE_DIR, DATA_DIR, FRONTEND_HTML, DISPLAY_HTML, SOUNDS_DIR, CLIPS_DIR, FIRMWARE_DIR, get_version as get_app_version
 
 # Module version imports
 from autodarts_client import MODULE_VERSION as AUTODARTS_VERSION
@@ -1703,6 +1703,14 @@ async def serve_frontend():
     if FRONTEND_HTML.exists():
         return HTMLResponse(FRONTEND_HTML.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
+
+
+@app.get("/display")
+async def serve_display():
+    """Serve the display overlay page (for second screen / OBS)."""
+    if DISPLAY_HTML.exists():
+        return HTMLResponse(DISPLAY_HTML.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>Display page not found</h1>", status_code=404)
 
 
 def main():

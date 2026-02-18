@@ -84,6 +84,7 @@ def build():
     # Data files to bundle (read-only, extracted to sys._MEIPASS)
     add_data = [
         f"{FRONTEND_DIR / 'index.html'}{sep}frontend",
+        f"{FRONTEND_DIR / 'display.html'}{sep}frontend",
         f"{PROJECT_ROOT / 'VERSION'}{sep}.",
     ]
 

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThrowSync Display</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+        background: transparent;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #fff;
+        overflow: hidden;
+        width: 100vw;
+        height: 100vh;
+        user-select: none;
+    }
+
+    /* ── HUD: Bottom bar ── */
+    .hud {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        padding: 10px 20px;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-top: 1px solid rgba(255,255,255,0.1);
+        z-index: 100;
+        transition: opacity 0.3s;
+    }
+
+    .hud.hidden { opacity: 0; pointer-events: none; }
+
+    .hud-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+    }
+
+    .hud-label { color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    .hud-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .hud-value.score { color: #8b5cf6; }
+    .hud-value.remaining { color: #10b981; }
+    .hud-value.last-throw { color: #f59e0b; }
+
+    .hud-divider { width: 1px; height: 32px; background: rgba(255,255,255,0.15); }
+
+    /* ── LED color strip ── */
+    .led-strip {
+        position: fixed;
+        bottom: 52px;
+        left: 0;
+        right: 0;
+        height: 3px;
+        z-index: 99;
+        transition: background 0.5s ease;
+    }
+
+    /* ── Clip overlay ── */
+    .clip-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.8);
+        animation: clipFadeIn 0.2s ease-out;
+    }
+
+    .clip-overlay video, .clip-overlay img {
+        max-width: 85vw;
+        max-height: 85vh;
+        border-radius: 16px;
+        box-shadow: 0 0 80px rgba(139, 92, 246, 0.3);
+    }
+
+    @keyframes clipFadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes clipFadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+
+    .clip-overlay.closing {
+        animation: clipFadeOut 0.3s ease-in forwards;
+    }
+
+    /* ── Event toast ── */
+    .event-toast {
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 150;
+        padding: 8px 20px;
+        background: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(8px);
+        border-radius: 20px;
+        font-size: 18px;
+        font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.15);
+        animation: toastIn 0.3s ease-out;
+        white-space: nowrap;
+    }
+
+    @keyframes toastIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    /* ── Connection indicator ── */
+    .conn-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        display: inline-block;
+    }
+    .conn-dot.on { background: #10b981; box-shadow: 0 0 6px #10b981; }
+    .conn-dot.off { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+
+    /* ── Settings gear ── */
+    .settings-btn {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        z-index: 300;
+        background: rgba(255,255,255,0.1);
+        border: none;
+        color: #fff;
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 16px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    body:hover .settings-btn { opacity: 0.5; }
+    .settings-btn:hover { opacity: 1 !important; background: rgba(255,255,255,0.2); }
+
+    .settings-panel {
+        position: fixed;
+        top: 48px;
+        right: 8px;
+        z-index: 300;
+        background: rgba(20, 20, 30, 0.95);
+        backdrop-filter: blur(12px);
+        border-radius: 12px;
+        padding: 16px;
+        min-width: 220px;
+        border: 1px solid rgba(255,255,255,0.1);
+        font-size: 13px;
+    }
+
+    .settings-panel label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        cursor: pointer;
+    }
+
+    .settings-panel input[type="checkbox"] { accent-color: #8b5cf6; }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+// ── ThrowSync Display Overlay ──
+// Standalone page — connects via WebSocket, shows HUD + clips
+
+const WS_URL = `ws://${window.location.host}/ws`;
+const state = {
+    connected: false,
+    score: null,        // current turn score
+    remaining: null,    // points remaining
+    lastThrow: null,    // last dart text
+    ledColor: null,     // current LED color
+    activeClip: null,   // {url, duration}
+    eventToast: null,   // toast text
+    showHud: true,
+    showLed: true,
+    showToasts: true,
+};
+
+let ws = null;
+let settingsOpen = false;
+
+// ── WebSocket Connection ──
+function connectWS() {
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+        state.connected = true;
+        render();
+    };
+
+    ws.onclose = () => {
+        state.connected = false;
+        render();
+        setTimeout(connectWS, 2000);
+    };
+
+    ws.onerror = () => ws.close();
+
+    ws.onmessage = (e) => {
+        try {
+            const msg = JSON.parse(e.data);
+            handleMessage(msg);
+        } catch(err) {}
+    };
+}
+
+// ── Message Handler ──
+function handleMessage(msg) {
+    // Clip playback
+    if (msg.type === 'caller_clip' && msg.clip) {
+        const url = msg.clip.startsWith('http') ? msg.clip : `/clips/${msg.clip}`;
+        showClip(url, msg.clip_duration || 5);
+    }
+
+    // Caller sound — also play audio here
+    if (msg.type === 'caller_play' && msg.sounds) {
+        playAudio(msg.sounds, msg.volume || 0.8, msg.priority || 0);
+    }
+
+    // Event info from autodarts
+    if (msg.type === 'display_state') {
+        const d = msg.data || {};
+        if (d.type === 'throw') {
+            state.lastThrow = d.throw_text || '?';
+            state.score = d.turn_score || 0;
+            render();
+        }
+        if (d.type === 'state_update') {
+            if (d.remaining !== undefined) state.remaining = d.remaining;
+            render();
+        }
+    }
+
+    // Event fired — show toasts for special events
+    if (msg.type === 'event_fired') {
+        const d = msg.entry || {};
+        const toastEvents = {
+            '180': '🔥 180!',
+            'bullseye': '🎯 BULLSEYE!',
+            'match_won': '🏆 MATCH GEWONNEN!',
+            'game_won': '🎉 LEG GEWONNEN!',
+            'busted': '💥 BUST!',
+            'checkout_possible': '🎯 Checkout möglich!',
+            'miss': '😅 Daneben!',
+        };
+        if (toastEvents[d.event]) showToast(toastEvents[d.event]);
+        // Reset turn score on game events
+        if (d.event === 'game_on' || d.event === 'game_won' || d.event === 'match_won') {
+            state.score = 0;
+            render();
+        }
+    }
+}
+
+// ── Audio Engine (duplicate for standalone page) ──
+const audioCache = {};
+let audioQueue = [];
+let audioPlaying = false;
+let currentAudio = null;
+
+async function playAudio(sounds, globalVol, priority) {
+    // High priority: flush + interrupt
+    if (priority >= 1 && audioPlaying) {
+        audioQueue = [];
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            currentAudio = null;
+        }
+        audioPlaying = false;
+    }
+
+    if (audioQueue.length > 3) audioQueue = audioQueue.slice(-2);
+
+    const sorted = [...sounds].sort((a, b) => (a.priority || 1) - (b.priority || 1));
+    sorted.forEach(s => {
+        if (s.sound) {
+            const url = s.sound.startsWith('http') ? s.sound : `/sounds/${s.sound}`;
+            audioQueue.push({ url, vol: s.volume || 1.0, globalVol });
+        }
+    });
+
+    if (audioPlaying) return;
+    audioPlaying = true;
+
+    while (audioQueue.length > 0) {
+        const item = audioQueue.shift();
+        try {
+            let audio = audioCache[item.url];
+            if (!audio) {
+                audio = new Audio(item.url);
+                audioCache[item.url] = audio;
+            }
+            audio.volume = Math.min(1, Math.max(0, (item.globalVol || 0.8) * (item.vol || 1.0)));
+            audio.currentTime = 0;
+            currentAudio = audio;
+            await new Promise((resolve) => {
+                const timeout = setTimeout(() => { audio.pause(); audio.currentTime = 0; resolve(); }, 4000);
+                audio.onended = () => { clearTimeout(timeout); resolve(); };
+                audio.onerror = () => { clearTimeout(timeout); resolve(); };
+                audio.play().catch(() => { clearTimeout(timeout); resolve(); });
+            });
+            currentAudio = null;
+        } catch(e) {}
+    }
+    audioPlaying = false;
+}
+
+// ── Clip Display ──
+let clipTimeout = null;
+function showClip(url, duration) {
+    if (clipTimeout) clearTimeout(clipTimeout);
+    state.activeClip = { url, duration };
+    render();
+    clipTimeout = setTimeout(() => {
+        state.activeClip = null;
+        render();
+    }, duration * 1000);
+}
+
+// ── Toast Display ──
+let toastTimeout = null;
+function showToast(text) {
+    if (!state.showToasts) return;
+    if (toastTimeout) clearTimeout(toastTimeout);
+    state.eventToast = text;
+    render();
+    toastTimeout = setTimeout(() => {
+        state.eventToast = null;
+        render();
+    }, 3000);
+}
+
+// ── Render ──
+function render() {
+    const app = document.getElementById('app');
+
+    let html = '';
+
+    // Settings button (visible on hover)
+    html += `<button class="settings-btn" onclick="toggleSettings()">⚙</button>`;
+
+    // Settings panel
+    if (settingsOpen) {
+        html += `<div class="settings-panel">
+            <div style="font-weight:600;margin-bottom:8px;">Display Einstellungen</div>
+            <label><input type="checkbox" ${state.showHud ? 'checked' : ''} onchange="state.showHud=this.checked;render()"> HUD anzeigen</label>
+            <label><input type="checkbox" ${state.showLed ? 'checked' : ''} onchange="state.showLed=this.checked;render()"> LED-Streifen</label>
+            <label><input type="checkbox" ${state.showToasts ? 'checked' : ''} onchange="state.showToasts=this.checked;render()"> Event-Toasts</label>
+            <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:8px 0">
+            <div style="color:rgba(255,255,255,0.4);font-size:11px;">
+                <span class="conn-dot ${state.connected ? 'on' : 'off'}"></span>
+                ${state.connected ? 'Verbunden' : 'Getrennt'}
+            </div>
+        </div>`;
+    }
+
+    // Event toast
+    if (state.eventToast) {
+        html += `<div class="event-toast">${state.eventToast}</div>`;
+    }
+
+    // Clip overlay
+    if (state.activeClip) {
+        const url = state.activeClip.url;
+        const isVideo = url.match(/\.(mp4|webm|mov)$/i);
+        html += `<div class="clip-overlay" onclick="state.activeClip=null;render();">`;
+        if (isVideo) {
+            html += `<video src="${url}" autoplay style="max-width:85vw;max-height:85vh;border-radius:16px;box-shadow:0 0 80px rgba(139,92,246,0.3)"></video>`;
+        } else {
+            html += `<img src="${url}" style="max-width:85vw;max-height:85vh;border-radius:16px;box-shadow:0 0 80px rgba(139,92,246,0.3)">`;
+        }
+        html += `</div>`;
+    }
+
+    // LED strip
+    if (state.showLed && state.ledColor) {
+        html += `<div class="led-strip" style="background:${state.ledColor}"></div>`;
+    }
+
+    // HUD
+    if (state.showHud) {
+        html += `<div class="hud">
+            <div class="hud-item">
+                <span class="conn-dot ${state.connected ? 'on' : 'off'}"></span>
+            </div>
+            <div class="hud-divider"></div>
+            <div class="hud-item">
+                <div>
+                    <div class="hud-label">Aufnahme</div>
+                    <div class="hud-value score">${state.score !== null ? state.score : '—'}</div>
+                </div>
+            </div>
+            <div class="hud-divider"></div>
+            <div class="hud-item">
+                <div>
+                    <div class="hud-label">Rest</div>
+                    <div class="hud-value remaining">${state.remaining !== null ? state.remaining : '—'}</div>
+                </div>
+            </div>
+            <div class="hud-divider"></div>
+            <div class="hud-item">
+                <div>
+                    <div class="hud-label">Letzter Wurf</div>
+                    <div class="hud-value last-throw">${state.lastThrow || '—'}</div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    app.innerHTML = html;
+}
+
+function toggleSettings() {
+    settingsOpen = !settingsOpen;
+    render();
+}
+
+// Close settings on click outside
+document.addEventListener('click', (e) => {
+    if (settingsOpen && !e.target.closest('.settings-panel') && !e.target.closest('.settings-btn')) {
+        settingsOpen = false;
+        render();
+    }
+});
+
+// ── Start ──
+render();
+connectWS();
+</script>
+</body>
+</html>
