@@ -99,10 +99,10 @@
             position: fixed; inset: 0;
             display: flex; align-items: center; justify-content: center;
             background: rgba(0, 0, 0, 0.75);
-            pointer-events: auto; cursor: pointer;
+            pointer-events: none;
             opacity: 0; transition: opacity 0.3s ease;
         }
-        #ts-clip.show { opacity: 1; }
+        #ts-clip.show { opacity: 1; pointer-events: auto; cursor: pointer; }
         #ts-clip.show video, #ts-clip.show img {
             max-width: 80vw; max-height: 80vh;
             border-radius: 16px;
