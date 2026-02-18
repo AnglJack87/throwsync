@@ -1,4 +1,4 @@
-// ThrowSync Overlay Injector v1.6.0
+// ThrowSync Overlay Injector v2.1.1
 // Injected via bookmarklet into any page (Autodarts, Darthelfer, etc.)
 // Connects to ThrowSync WebSocket and shows HUD + Clips + Toasts
 
@@ -25,6 +25,7 @@
         remaining: null,
         lastThrow: null,
         hudVisible: true,
+        isMyTurn: null,
     };
 
     // ── Create overlay container ──
@@ -128,11 +129,21 @@
 
     // ── Build HUD ──
     function render() {
+        const turnLabel = state.isMyTurn === true ? 'DEIN WURF' : 
+                          state.isMyTurn === false ? 'GEGNER' : '';
+        const turnColor = state.isMyTurn === true ? '#22c55e' : 
+                          state.isMyTurn === false ? '#ef4444' : '#666';
         overlay.innerHTML = `
             <div id="ts-led"></div>
             <div id="ts-hud" class="${state.hudVisible ? '' : 'hidden'}">
                 <span class="ts-brand">THROWSYNC</span>
                 <span class="ts-dot ${state.connected ? 'on' : 'off'}"></span>
+                ${turnLabel ? `<div class="ts-hud-div"></div>
+                <div class="ts-hud-item">
+                    <div>
+                        <div class="ts-hud-val" style="font-size:11px;font-weight:700;color:${turnColor}">${turnLabel}</div>
+                    </div>
+                </div>` : ''}
                 <div class="ts-hud-div"></div>
                 <div class="ts-hud-item">
                     <div>
@@ -278,10 +289,16 @@
                 if (d.type === 'throw') {
                     state.lastThrow = d.throw_text || '?';
                     state.score = d.turn_score || 0;
+                    state.isMyTurn = true; // Darts hitting = my turn
                     render();
                 }
                 if (d.type === 'state_update') {
                     if (d.remaining !== undefined) state.remaining = d.remaining;
+                    if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
+                    render();
+                }
+                if (d.type === 'turn_update') {
+                    if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
                     render();
                 }
             }
@@ -300,6 +317,7 @@
                 if (toasts[ev]) showToast(toasts[ev]);
                 if (ev === 'game_on' || ev === 'game_won' || ev === 'match_won') {
                     state.score = 0;
+                    state.isMyTurn = null; // Reset until detected
                     render();
                 }
             }

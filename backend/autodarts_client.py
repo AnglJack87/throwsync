@@ -295,9 +295,17 @@ class AutodartsBoardConnection:
                 })
                 
                 # Detect "my" player index: first throw in a match = me
+                # When a dart physically hits MY board, the current player MUST be me
                 if self._my_player_index < 0 and self._last_player_index >= 0:
                     self._my_player_index = self._last_player_index
                     logger.info(f"Board '{self.name}': Spieler-Erkennung -> Ich bin Player #{self._my_player_index}")
+                    # Fire my_turn immediately since we just confirmed it's our turn
+                    await self._trigger_event("my_turn")
+                    await self._broadcast_display_state({
+                        "type": "turn_update",
+                        "is_my_turn": True,
+                        "my_player_index": self._my_player_index,
+                    })
                 
                 # ── After 3rd dart: schedule score announcement ──
                 # Short delay lets match-state bust-detection fire first
@@ -372,18 +380,45 @@ class AutodartsBoardConnection:
                     })
                 except Exception as e:
                     logger.error(f"Board '{self.name}': Match subscribe fehlgeschlagen: {e}")
-                # Trigger game_on
-                events = self._map_events("game-started", inner)
-                if events:
-                    logger.info(f"Board '{self.name}' TRIGGER: match-start -> {events}")
-                    await self._dispatch_events("game-started", events)
+                
+                # ── Try to detect my player index from match data ──
                 self._turn_score = 0
                 self._darts_in_turn = 0
                 self._last_player_index = -1
                 self._last_scores = None
                 self._busted = False
                 self._score_announced = False
-                self._my_player_index = -1  # Re-detect on first throw
+                self._my_player_index = -1
+                
+                # Log full match data for debugging
+                logger.info(f"Board '{self.name}' MATCH DATA: {json.dumps(inner)[:800]}")
+                
+                # Try detection from players array
+                players = inner.get("players", inner.get("participants", []))
+                if isinstance(players, list):
+                    for idx, p in enumerate(players):
+                        if isinstance(p, dict):
+                            p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
+                            if p_board and p_board == self.board_id:
+                                self._my_player_index = idx
+                                logger.info(f"Board '{self.name}': ★ Spieler aus Match-Daten erkannt → Ich bin Player #{idx} (boardId match)")
+                                break
+                
+                # Try detection from hostBoardId / creatorBoardId
+                if self._my_player_index < 0:
+                    host_board = inner.get("hostBoardId", inner.get("creatorBoardId", ""))
+                    if host_board == self.board_id:
+                        self._my_player_index = 0  # Host is typically player 0
+                        logger.info(f"Board '{self.name}': ★ Spieler aus Host-Board erkannt → Ich bin Player #0 (Host)")
+                
+                if self._my_player_index < 0:
+                    logger.info(f"Board '{self.name}': Spieler-Index noch unbekannt, wird beim ersten Wurf erkannt")
+                
+                # Trigger game_on
+                events = self._map_events("game-started", inner)
+                if events:
+                    logger.info(f"Board '{self.name}' TRIGGER: match-start -> {events}")
+                    await self._dispatch_events("game-started", events)
                 await self._broadcast_caller("game_on")
             elif event_type == "finish" and match_id:
                 logger.info(f"Board '{self.name}': Match beendet ({match_id[:12]}...)")
@@ -419,6 +454,18 @@ class AutodartsBoardConnection:
         """
         if not isinstance(state, dict):
             return
+        
+        # ── Try to detect player from state data if still unknown ──
+        if self._my_player_index < 0:
+            players = state.get("players", state.get("participants", []))
+            if isinstance(players, list):
+                for idx, p in enumerate(players):
+                    if isinstance(p, dict):
+                        p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
+                        if p_board and p_board == self.board_id:
+                            self._my_player_index = idx
+                            logger.info(f"Board '{self.name}': ★ Spieler aus State-Daten erkannt → Player #{idx}")
+                            break
         
         # ── Parse state (try multiple field names for API compatibility) ──
         game_finished = (state.get("gameFinished") or state.get("finished") 
@@ -494,12 +541,27 @@ class AutodartsBoardConnection:
             if self._last_player_index >= 0:
                 logger.info(f"Board '{self.name}' STATE: Spielerwechsel {self._last_player_index} → {player_index}")
                 if self._my_player_index >= 0:
-                    if player_index == self._my_player_index:
+                    is_my = player_index == self._my_player_index
+                    if is_my:
                         logger.info(f"Board '{self.name}': >>> ICH BIN DRAN → my_turn <<<")
                         await self._trigger_event("my_turn")
                     else:
                         logger.info(f"Board '{self.name}': >>> GEGNER DRAN → opponent_turn <<<")
                         await self._trigger_event("opponent_turn")
+                    # Always broadcast turn state for display/overlay
+                    await self._broadcast_display_state({
+                        "type": "turn_update",
+                        "is_my_turn": is_my,
+                        "my_player_index": self._my_player_index,
+                        "active_player_index": player_index,
+                    })
+                else:
+                    # Player index not yet known — broadcast what we have
+                    await self._broadcast_display_state({
+                        "type": "turn_update",
+                        "is_my_turn": None,  # Unknown
+                        "active_player_index": player_index,
+                    })
             
             self._last_player_index = player_index
         
@@ -514,19 +576,29 @@ class AutodartsBoardConnection:
         # ── Update score tracking ──
         if game_scores:
             self._last_scores = list(game_scores)
-            # Broadcast remaining scores for display overlay
-            remaining = None
+            # Determine my remaining score
+            my_remaining = None
             if self._my_player_index >= 0 and self._my_player_index < len(game_scores):
-                remaining = game_scores[self._my_player_index]
-            elif player_index >= 0 and player_index < len(game_scores):
-                remaining = game_scores[player_index]
-            if remaining is not None:
-                await self._broadcast_display_state({
-                    "type": "state_update",
-                    "remaining": remaining,
-                    "player_index": player_index,
-                    "scores": game_scores,
-                })
+                my_remaining = game_scores[self._my_player_index]
+            # Active player's remaining
+            active_remaining = None
+            if player_index >= 0 and player_index < len(game_scores):
+                active_remaining = game_scores[player_index]
+            # Use my score if known, otherwise active player's
+            remaining = my_remaining if my_remaining is not None else active_remaining
+            # Determine if it's my turn
+            is_my_turn = None
+            if self._my_player_index >= 0:
+                is_my_turn = (player_index == self._my_player_index)
+            
+            await self._broadcast_display_state({
+                "type": "state_update",
+                "remaining": remaining,
+                "player_index": player_index,
+                "my_player_index": self._my_player_index,
+                "is_my_turn": is_my_turn,
+                "scores": game_scores,
+            })
 
     async def _dispatch_events(self, event_type: str, events: list):
         """Dispatch mapped events based on event type logic."""

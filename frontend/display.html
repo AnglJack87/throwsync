@@ -192,6 +192,8 @@ const state = {
     showHud: true,
     showLed: true,
     showToasts: true,
+    isMyTurn: null,     // null = unknown, true/false
+    allScores: [],      // all player scores
 };
 
 let ws = null;
@@ -241,10 +243,17 @@ function handleMessage(msg) {
         if (d.type === 'throw') {
             state.lastThrow = d.throw_text || '?';
             state.score = d.turn_score || 0;
+            state.isMyTurn = true; // If darts are hitting, it's my turn
             render();
         }
         if (d.type === 'state_update') {
             if (d.remaining !== undefined) state.remaining = d.remaining;
+            if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
+            if (d.scores) state.allScores = d.scores;
+            render();
+        }
+        if (d.type === 'turn_update') {
+            if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
             render();
         }
     }
@@ -398,10 +407,20 @@ function render() {
 
     // HUD
     if (state.showHud) {
+        const turnLabel = state.isMyTurn === true ? 'DU BIST DRAN' : 
+                          state.isMyTurn === false ? 'GEGNER' : '';
+        const turnColor = state.isMyTurn === true ? '#22c55e' : 
+                          state.isMyTurn === false ? '#ef4444' : '#666';
         html += `<div class="hud">
             <div class="hud-item">
                 <span class="conn-dot ${state.connected ? 'on' : 'off'}"></span>
             </div>
+            ${turnLabel ? `<div class="hud-divider"></div>
+            <div class="hud-item">
+                <div>
+                    <div class="hud-value" style="font-size:13px;font-weight:700;color:${turnColor}">${turnLabel}</div>
+                </div>
+            </div>` : ''}
             <div class="hud-divider"></div>
             <div class="hud-item">
                 <div>
