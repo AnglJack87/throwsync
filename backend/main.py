@@ -197,6 +197,47 @@ async def broadcast_caller_sound(sounds: list, event_name: str = "", data: dict 
                     "volume": crowd_vol,
                 })
 
+    # ── Twitch Chat ──
+    twitch_cfg = config_manager.get("twitch_config", {})
+    if twitch_cfg.get("enabled"):
+        from twitch_obs import twitch_bot, format_alert
+        if twitch_bot.connected:
+            alerts = twitch_cfg.get("alerts", {})
+            player = data.get("player_name", "") if data else ""
+            score = data.get("round_score", 0) if data else 0
+            template = alerts.get(event_name)
+            if template:
+                msg = format_alert(template, player, score)
+                asyncio.create_task(twitch_bot.send_message(msg))
+
+    # ── Discord Webhook ──
+    discord_cfg = config_manager.get("discord_config", {})
+    if discord_cfg.get("enabled") and discord_cfg.get("webhook_url"):
+        from discord_bot import send_discord_webhook, build_event_embed
+        should_post = False
+        if event_name == "180" and discord_cfg.get("post_180", True):
+            should_post = True
+        elif event_name == "match_won" and discord_cfg.get("post_match_won", True):
+            should_post = True
+        elif event_name == "game_won" and discord_cfg.get("post_game_won", False):
+            should_post = True
+        elif event_name == "busted" and discord_cfg.get("post_busted", False):
+            should_post = True
+        elif event_name == "player_change" and discord_cfg.get("post_high_score", True):
+            score = data.get("round_score", 0) if data else 0
+            if score >= discord_cfg.get("min_high_score", 100):
+                should_post = True
+                event_name = "high_score"
+        if should_post:
+            player = data.get("player_name", "") if data else ""
+            score = data.get("round_score", 0) if data else 0
+            embed = build_event_embed(event_name, player, score)
+            asyncio.create_task(send_discord_webhook(
+                discord_cfg["webhook_url"], embed,
+                discord_cfg.get("bot_name", "ThrowSync"),
+                discord_cfg.get("avatar_url", ""),
+            ))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -220,7 +261,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -2205,6 +2246,184 @@ async def test_display_overlay(data: dict):
             await broadcast_ws({"type": "caller_clip", "clip": clip_info["clip"], "clip_duration": clip_info.get("duration", 5), "event": "match_won"})
 
     return {"success": True, "event": event}
+
+
+# ─── LED Animation Designer ───────────────────────────────────────────────────
+
+@app.get("/api/led-designer/animations")
+async def get_animations():
+    """Get all custom + preset animations."""
+    from led_designer import PRESET_ANIMATIONS
+    custom = config_manager.get("custom_animations", [])
+    return {"presets": PRESET_ANIMATIONS, "custom": custom}
+
+
+@app.post("/api/led-designer/animations")
+async def save_animation(data: dict):
+    """Create or update a custom animation."""
+    from led_designer import create_animation
+    custom = config_manager.get("custom_animations", [])
+    anim_id = data.get("id")
+    if anim_id:
+        # Update existing
+        for i, a in enumerate(custom):
+            if a.get("id") == anim_id:
+                custom[i] = {**a, **data}
+                break
+        else:
+            custom.append(data)
+    else:
+        # New animation
+        anim = create_animation(data.get("name", "Neue Animation"), data.get("led_count", 30))
+        anim.update(data)
+        data = anim
+        custom.append(data)
+    config_manager.set("custom_animations", custom)
+    config_manager.save()
+    return {"success": True, "animation": data}
+
+
+@app.delete("/api/led-designer/animations/{anim_id}")
+async def delete_animation(anim_id: str):
+    """Delete a custom animation."""
+    custom = config_manager.get("custom_animations", [])
+    custom = [a for a in custom if a.get("id") != anim_id]
+    config_manager.set("custom_animations", custom)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.post("/api/led-designer/preview")
+async def preview_animation(data: dict):
+    """Preview an animation on all devices by broadcasting frames."""
+    from led_designer import generate_wled_payload
+    animation = data.get("animation", {})
+    if not animation.get("frames"):
+        raise HTTPException(400, "No frames in animation")
+    duration = animation.get("duration", 2000)
+    steps = min(20, max(5, duration // 100))  # 5-20 steps
+    for step in range(steps):
+        t = int((step / steps) * duration)
+        payload = generate_wled_payload(animation, t)
+        if payload:
+            # Send to all devices
+            devices = config_manager.get("devices", [])
+            for dev in devices:
+                try:
+                    await device_manager.send_wled_json(dev.get("id", ""), payload)
+                except Exception:
+                    pass
+        await asyncio.sleep(duration / steps / 1000)
+    return {"success": True}
+
+
+# ─── Twitch Integration ──────────────────────────────────────────────────────
+
+@app.get("/api/twitch/config")
+async def get_twitch_config():
+    """Get Twitch configuration (without oauth token)."""
+    from twitch_obs import DEFAULT_TWITCH_CONFIG
+    cfg = config_manager.get("twitch_config", {})
+    result = {**DEFAULT_TWITCH_CONFIG, **cfg}
+    # Don't expose full token
+    if result.get("oauth_token"):
+        result["oauth_token"] = "****" + result["oauth_token"][-4:] if len(result["oauth_token"]) > 4 else "****"
+        result["has_token"] = True
+    else:
+        result["has_token"] = False
+    return result
+
+
+@app.post("/api/twitch/config")
+async def save_twitch_config(data: dict):
+    """Save Twitch configuration."""
+    # Don't overwrite token if masked
+    if data.get("oauth_token", "").startswith("****"):
+        existing = config_manager.get("twitch_config", {})
+        data["oauth_token"] = existing.get("oauth_token", "")
+    config_manager.set("twitch_config", data)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.post("/api/twitch/connect")
+async def twitch_connect():
+    """Connect the Twitch bot."""
+    from twitch_obs import twitch_bot
+    cfg = config_manager.get("twitch_config", {})
+    if not cfg.get("channel") or not cfg.get("oauth_token"):
+        raise HTTPException(400, "Channel und OAuth Token erforderlich")
+    ok = await twitch_bot.connect(cfg["channel"], cfg["oauth_token"], cfg.get("bot_name", "ThrowSyncBot"))
+    return {"success": ok, "connected": twitch_bot.connected}
+
+
+@app.post("/api/twitch/disconnect")
+async def twitch_disconnect():
+    """Disconnect the Twitch bot."""
+    from twitch_obs import twitch_bot
+    await twitch_bot.disconnect()
+    return {"success": True}
+
+
+@app.get("/api/twitch/status")
+async def twitch_status():
+    """Get Twitch bot connection status."""
+    from twitch_obs import twitch_bot
+    return {"connected": twitch_bot.connected, "channel": twitch_bot.channel}
+
+
+@app.post("/api/twitch/test")
+async def twitch_test():
+    """Send a test message to Twitch chat."""
+    from twitch_obs import twitch_bot
+    if not twitch_bot.connected:
+        raise HTTPException(400, "Twitch bot nicht verbunden")
+    ok = await twitch_bot.send_message("\U0001F3AF ThrowSync ist verbunden! Let's play darts! \U0001F525")
+    return {"success": ok}
+
+
+# ─── Discord Integration ─────────────────────────────────────────────────────
+
+@app.get("/api/discord/config")
+async def get_discord_config():
+    """Get Discord configuration."""
+    from discord_bot import DEFAULT_DISCORD_CONFIG
+    cfg = config_manager.get("discord_config", {})
+    result = {**DEFAULT_DISCORD_CONFIG, **cfg}
+    # Mask webhook URL
+    if result.get("webhook_url"):
+        result["has_webhook"] = True
+        url = result["webhook_url"]
+        result["webhook_url_display"] = url[:40] + "..." if len(url) > 40 else url
+    else:
+        result["has_webhook"] = False
+        result["webhook_url_display"] = ""
+    return result
+
+
+@app.post("/api/discord/config")
+async def save_discord_config(data: dict):
+    """Save Discord configuration."""
+    config_manager.set("discord_config", data)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.post("/api/discord/test")
+async def discord_test():
+    """Send a test message to Discord."""
+    from discord_bot import send_discord_webhook
+    cfg = config_manager.get("discord_config", {})
+    if not cfg.get("webhook_url"):
+        raise HTTPException(400, "Kein Webhook konfiguriert")
+    embed = {
+        "title": "\U0001F3AF ThrowSync verbunden!",
+        "description": "Discord-Integration ist aktiv. Game on!",
+        "color": 0x8B5CF6,
+        "footer": {"text": "ThrowSync \u2022 Dart Gaming Lightshow"},
+    }
+    ok = await send_discord_webhook(cfg["webhook_url"], embed, cfg.get("bot_name", "ThrowSync"), cfg.get("avatar_url", ""))
+    return {"success": ok}
 
 
 # ─── PWA Support ──────────────────────────────────────────────────────────────

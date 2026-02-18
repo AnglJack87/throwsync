@@ -842,6 +842,8 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, versi
         { id: 'stats', icon: '\uD83D\uDCCA', label: t('nav.stats', 'Statistiken') },
         { id: 'achievements', icon: '\uD83C\uDFC5', label: 'Achievements' },
         { id: 'music', icon: '\uD83C\uDFB5', label: t('nav.music', 'Musik') },
+        { id: 'led-designer', icon: '\uD83D\uDCA1', label: 'LED Designer' },
+        { id: 'integrations', icon: '\uD83D\uDD17', label: 'Integrationen' },
         { id: 'flash', icon: '\u21AF', label: 'Firmware' },
         { id: 'presets', icon: '\u2605', label: 'Presets' },
         { id: 'settings', icon: '\u2699', label: t('nav.settings', 'Einstellungen') },
@@ -5129,6 +5131,437 @@ function StatsPage() {
 }
 
 
+// ─── LED Animation Designer ──────────────────────────────────────────────────
+
+function LEDDesignerPage() {
+    const [presets, setPresets] = useState([]);
+    const [custom, setCustom] = useState([]);
+    const [editAnim, setEditAnim] = useState(null);
+    const [newName, setNewName] = useState('');
+    const toast = useToast();
+    const { t } = useI18n();
+
+    const load = () => {
+        API.get('/api/led-designer/animations').then(d => {
+            setPresets(d?.presets || []);
+            setCustom(d?.custom || []);
+        });
+    };
+    useEffect(load, []);
+
+    const createAnim = async () => {
+        if (!newName.trim()) return;
+        const res = await API.post('/api/led-designer/animations', { name: newName });
+        if (res?.success) { setNewName(''); load(); }
+    };
+
+    const deleteAnim = async (id) => {
+        if (!confirm('Animation löschen?')) return;
+        await API.del(`/api/led-designer/animations/${id}`);
+        load();
+    };
+
+    const preview = async (anim) => {
+        toast('Preview wird abgespielt...', 'info');
+        await API.post('/api/led-designer/preview', { animation: anim });
+    };
+
+    const saveEdit = async () => {
+        if (!editAnim) return;
+        await API.post('/api/led-designer/animations', editAnim);
+        setEditAnim(null);
+        load();
+        toast('Animation gespeichert!', 'success');
+    };
+
+    const addFrame = () => {
+        if (!editAnim) return;
+        const frames = [...editAnim.frames];
+        const lastTime = frames.length > 0 ? frames[frames.length - 1].time : 0;
+        frames.push({ time: lastTime + 500, colors: ['#8b5cf6'], brightness: 200, transition: 300 });
+        setEditAnim({ ...editAnim, frames, duration: Math.max(editAnim.duration, lastTime + 1000) });
+    };
+
+    const removeFrame = (idx) => {
+        if (!editAnim || editAnim.frames.length <= 1) return;
+        const frames = editAnim.frames.filter((_, i) => i !== idx);
+        setEditAnim({ ...editAnim, frames });
+    };
+
+    const updateFrame = (idx, field, value) => {
+        const frames = [...editAnim.frames];
+        frames[idx] = { ...frames[idx], [field]: value };
+        setEditAnim({ ...editAnim, frames });
+    };
+
+    const AnimCard = ({ anim, isPreset }) => (
+        <div className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Color preview strip */}
+            <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', display: 'flex', flexShrink: 0 }}>
+                {(anim.frames?.[0]?.colors || ['#888']).slice(0, 4).map((c, i) => (
+                    <div key={i} style={{ flex: 1, height: '100%', background: c }} />
+                ))}
+            </div>
+            <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{anim.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                    {anim.frames?.length || 0} Frames · {anim.duration || 0}ms · {anim.blend_mode || 'linear'}
+                    {anim.loop ? ' · Loop' : ''}
+                    {isPreset && ' · Preset'}
+                </div>
+            </div>
+            <button className="btn" style={{ fontSize: 12 }} onClick={() => preview(anim)}>▶ Preview</button>
+            {!isPreset && (
+                <>
+                    <button className="btn" style={{ fontSize: 12 }} onClick={() => setEditAnim({ ...anim })}>✏</button>
+                    <button className="btn" style={{ fontSize: 12, color: '#f44' }} onClick={() => deleteAnim(anim.id)}>✕</button>
+                </>
+            )}
+            {isPreset && (
+                <button className="btn" style={{ fontSize: 12 }} onClick={async () => {
+                    await API.post('/api/led-designer/animations', { ...anim, id: null, name: anim.name + ' (Kopie)', builtin: false });
+                    load();
+                }}>📋 Kopieren</button>
+            )}
+        </div>
+    );
+
+    return (
+        <div>
+            <div className="page-header">
+                <h2>💡 LED Animations-Designer</h2>
+                <p>Erstelle eigene LED-Animationen mit Keyframes</p>
+            </div>
+
+            {/* Create new */}
+            <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', gap: 8 }}>
+                <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                    placeholder="Neue Animation..." onKeyDown={e => e.key === 'Enter' && createAnim()}
+                    style={{ flex: 1, padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                <button className="btn btn-primary" onClick={createAnim}>+ Erstellen</button>
+            </div>
+
+            {/* Custom Animations */}
+            {custom.length > 0 && <h4 style={{ margin: '16px 0 8px' }}>🎨 Eigene Animationen</h4>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                {custom.map(a => <AnimCard key={a.id} anim={a} isPreset={false} />)}
+            </div>
+
+            {/* Preset Animations */}
+            <h4 style={{ margin: '16px 0 8px' }}>⭐ Preset-Animationen</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {presets.map(a => <AnimCard key={a.id} anim={a} isPreset={true} />)}
+            </div>
+
+            {/* Edit Modal */}
+            {editAnim && (
+                <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditAnim(null)}>
+                    <div className="modal" style={{ maxWidth: 600, maxHeight: '90vh', overflow: 'auto' }}>
+                        <h3>✏ {editAnim.name}</h3>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                            <div>
+                                <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Name</label>
+                                <input type="text" value={editAnim.name} onChange={e => setEditAnim({ ...editAnim, name: e.target.value })}
+                                    style={{ width: '100%', padding: '4px 8px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Dauer (ms)</label>
+                                <input type="number" value={editAnim.duration} onChange={e => setEditAnim({ ...editAnim, duration: parseInt(e.target.value) || 2000 })}
+                                    style={{ width: '100%', padding: '4px 8px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Blend</label>
+                                <select value={editAnim.blend_mode || 'linear'} onChange={e => setEditAnim({ ...editAnim, blend_mode: e.target.value })}
+                                    style={{ width: '100%', padding: '4px 8px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }}>
+                                    <option value="linear">Linear</option>
+                                    <option value="step">Step</option>
+                                    <option value="ease">Ease</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, cursor: 'pointer', fontSize: 13 }}>
+                            <input type="checkbox" checked={editAnim.loop !== false} onChange={e => setEditAnim({ ...editAnim, loop: e.target.checked })}
+                                style={{ accentColor: 'var(--accent)' }} /> Loop
+                        </label>
+
+                        {/* Timeline */}
+                        <div style={{ marginBottom: 12, padding: 8, background: 'var(--bg)', borderRadius: 8, position: 'relative', height: 32 }}>
+                            {editAnim.frames.map((f, i) => {
+                                const pos = editAnim.duration > 0 ? (f.time / editAnim.duration) * 100 : 0;
+                                return <div key={i} style={{ position: 'absolute', left: `${pos}%`, top: 4, width: 24, height: 24, borderRadius: 999, background: f.colors?.[0] || '#888', border: '2px solid #fff', transform: 'translateX(-50%)', cursor: 'pointer' }} title={`${f.time}ms`} />;
+                            })}
+                        </div>
+
+                        {/* Keyframes */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                            {editAnim.frames.map((f, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', background: 'var(--bg-card)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                                    <span style={{ fontSize: 11, color: 'var(--text-dim)', minWidth: 16 }}>{i + 1}</span>
+                                    <input type="number" value={f.time} onChange={e => updateFrame(i, 'time', parseInt(e.target.value) || 0)}
+                                        style={{ width: 60, padding: '2px 4px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3, fontSize: 12 }} title="Time (ms)" />
+                                    <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>ms</span>
+                                    {(f.colors || ['#ffffff']).map((c, ci) => (
+                                        <input key={ci} type="color" value={c} onChange={e => {
+                                            const colors = [...(f.colors || ['#ffffff'])];
+                                            colors[ci] = e.target.value;
+                                            updateFrame(i, 'colors', colors);
+                                        }} style={{ width: 28, height: 24, border: 'none', borderRadius: 3, cursor: 'pointer' }} />
+                                    ))}
+                                    <button onClick={() => { const colors = [...(f.colors || []), '#ffffff']; updateFrame(i, 'colors', colors); }}
+                                        style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 3, width: 24, height: 24, cursor: 'pointer', fontSize: 12, color: 'var(--text-dim)' }}>+</button>
+                                    <input type="range" min="0" max="255" value={f.brightness || 200} onChange={e => updateFrame(i, 'brightness', parseInt(e.target.value))}
+                                        style={{ width: 60, accentColor: 'var(--accent)' }} title={`Brightness: ${f.brightness || 200}`} />
+                                    <button onClick={() => removeFrame(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f44', fontSize: 14 }}>✕</button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="btn" onClick={addFrame}>+ Keyframe</button>
+                            <button className="btn" onClick={() => preview(editAnim)}>▶ Preview</button>
+                            <div style={{ flex: 1 }} />
+                            <button className="btn btn-primary" onClick={saveEdit}>Speichern</button>
+                            <button className="btn" onClick={() => setEditAnim(null)}>Abbrechen</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+// ─── Integrations Page (Twitch + Discord) ────────────────────────────────────
+
+function IntegrationsPage() {
+    const [twitchCfg, setTwitchCfg] = useState({});
+    const [twitchStatus, setTwitchStatus] = useState({ connected: false });
+    const [discordCfg, setDiscordCfg] = useState({});
+    const [oauthInput, setOauthInput] = useState('');
+    const [webhookInput, setWebhookInput] = useState('');
+    const toast = useToast();
+
+    useEffect(() => {
+        API.get('/api/twitch/config').then(d => setTwitchCfg(d || {}));
+        API.get('/api/twitch/status').then(d => setTwitchStatus(d || {}));
+        API.get('/api/discord/config').then(d => setDiscordCfg(d || {}));
+    }, []);
+
+    const saveTwitch = (update) => {
+        const next = { ...twitchCfg, ...update };
+        setTwitchCfg(next);
+        API.post('/api/twitch/config', next);
+    };
+
+    const saveDiscord = (update) => {
+        const next = { ...discordCfg, ...update };
+        setDiscordCfg(next);
+        API.post('/api/discord/config', next);
+    };
+
+    return (
+        <div>
+            <div className="page-header">
+                <h2>🔗 Integrationen</h2>
+                <p>Twitch, Discord und OBS Anbindung</p>
+            </div>
+
+            {/* ═══ TWITCH ═══ */}
+            <div className="card" style={{ padding: 16, marginBottom: 16, borderColor: twitchStatus.connected ? 'var(--success)' : 'var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 28 }}>📺</span>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>Twitch Chat Bot</div>
+                        <div style={{ fontSize: 12, color: twitchStatus.connected ? 'var(--success)' : 'var(--text-dim)' }}>
+                            {twitchStatus.connected ? `✓ Verbunden mit #${twitchStatus.channel}` : 'Nicht verbunden'}
+                        </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <span style={{ fontSize: 13, color: twitchCfg.enabled ? 'var(--accent)' : 'var(--text-dim)' }}>
+                            {twitchCfg.enabled ? 'Aktiv' : 'Aus'}
+                        </span>
+                        <input type="checkbox" checked={twitchCfg.enabled || false}
+                            onChange={e => saveTwitch({ enabled: e.target.checked })}
+                            style={{ accentColor: 'var(--accent)', width: 18, height: 18 }} />
+                    </label>
+                </div>
+
+                {twitchCfg.enabled && <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                        <div>
+                            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Channel</label>
+                            <input type="text" value={twitchCfg.channel || ''} onChange={e => saveTwitch({ channel: e.target.value })}
+                                placeholder="dein_kanal"
+                                style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Bot Name</label>
+                            <input type="text" value={twitchCfg.bot_name || 'ThrowSyncBot'} onChange={e => saveTwitch({ bot_name: e.target.value })}
+                                style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                        </div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                        <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>OAuth Token</label>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                            <input type="password" value={oauthInput} onChange={e => setOauthInput(e.target.value)}
+                                placeholder={twitchCfg.has_token ? '(gespeichert)' : 'oauth:xxxxxx'}
+                                style={{ flex: 1, padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                            {oauthInput && <button className="btn btn-primary" style={{ fontSize: 12 }}
+                                onClick={() => { saveTwitch({ oauth_token: oauthInput }); setOauthInput(''); toast('Token gespeichert!', 'success'); }}>
+                                Speichern</button>}
+                        </div>
+                        <small style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+                            Hol dir deinen Token: <a href="https://twitchapps.com/tmi/" target="_blank" style={{ color: 'var(--accent)' }}>twitchapps.com/tmi</a>
+                        </small>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                        {!twitchStatus.connected ? (
+                            <button className="btn btn-primary" onClick={async () => {
+                                const r = await API.post('/api/twitch/connect');
+                                if (r?.success) { setTwitchStatus({ connected: true, channel: twitchCfg.channel }); toast('Twitch verbunden!', 'success'); }
+                                else toast('Verbindung fehlgeschlagen', 'error');
+                            }}>🔗 Verbinden</button>
+                        ) : (
+                            <button className="btn" onClick={async () => {
+                                await API.post('/api/twitch/disconnect');
+                                setTwitchStatus({ connected: false });
+                            }}>⛓ Trennen</button>
+                        )}
+                        {twitchStatus.connected && (
+                            <button className="btn" onClick={async () => {
+                                const r = await API.post('/api/twitch/test');
+                                if (r?.success) toast('Testnachricht gesendet!', 'success');
+                            }}>🧪 Test</button>
+                        )}
+                    </div>
+
+                    {/* Alert toggles */}
+                    <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 6 }}>Events die gepostet werden:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {['180', 'match_won', 'game_won', 'busted', 'high_score', 'bullseye', 'achievement'].map(evt => (
+                            <label key={evt} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                                <input type="checkbox" checked={twitchCfg.alerts?.[evt] !== undefined}
+                                    onChange={e => {
+                                        const alerts = { ...(twitchCfg.alerts || {}) };
+                                        if (!e.target.checked) delete alerts[evt];
+                                        else alerts[evt] = alerts[evt] || `{player} — ${evt}`;
+                                        saveTwitch({ alerts });
+                                    }}
+                                    style={{ accentColor: 'var(--accent)' }} />
+                                {evt}
+                            </label>
+                        ))}
+                    </div>
+                </>}
+            </div>
+
+            {/* ═══ DISCORD ═══ */}
+            <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 28 }}>💬</span>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>Discord Webhook</div>
+                        <div style={{ fontSize: 12, color: discordCfg.has_webhook ? 'var(--success)' : 'var(--text-dim)' }}>
+                            {discordCfg.has_webhook ? '✓ Webhook konfiguriert' : 'Nicht konfiguriert'}
+                        </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <span style={{ fontSize: 13, color: discordCfg.enabled ? 'var(--accent)' : 'var(--text-dim)' }}>
+                            {discordCfg.enabled ? 'Aktiv' : 'Aus'}
+                        </span>
+                        <input type="checkbox" checked={discordCfg.enabled || false}
+                            onChange={e => saveDiscord({ enabled: e.target.checked })}
+                            style={{ accentColor: 'var(--accent)', width: 18, height: 18 }} />
+                    </label>
+                </div>
+
+                {discordCfg.enabled && <>
+                    <div style={{ marginBottom: 12 }}>
+                        <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Webhook URL</label>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                            <input type="url" value={webhookInput} onChange={e => setWebhookInput(e.target.value)}
+                                placeholder={discordCfg.has_webhook ? discordCfg.webhook_url_display : 'https://discord.com/api/webhooks/...'}
+                                style={{ flex: 1, padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }} />
+                            {webhookInput && <button className="btn btn-primary" style={{ fontSize: 12 }}
+                                onClick={() => { saveDiscord({ webhook_url: webhookInput }); setWebhookInput(''); toast('Webhook gespeichert!', 'success'); }}>
+                                Speichern</button>}
+                        </div>
+                        <small style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+                            Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL
+                        </small>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                        <div>
+                            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Bot Name</label>
+                            <input type="text" value={discordCfg.bot_name || 'ThrowSync'} onChange={e => saveDiscord({ bot_name: e.target.value })}
+                                style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Min. High Score</label>
+                            <input type="number" value={discordCfg.min_high_score || 100} onChange={e => saveDiscord({ min_high_score: parseInt(e.target.value) || 100 })}
+                                style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }} />
+                        </div>
+                    </div>
+
+                    <button className="btn" onClick={async () => {
+                        const r = await API.post('/api/discord/test');
+                        if (r?.success) toast('Test-Embed gesendet!', 'success');
+                        else toast('Fehler — Webhook prüfen', 'error');
+                    }} style={{ marginBottom: 12 }}>🧪 Test-Nachricht senden</button>
+
+                    <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 6 }}>Events die gepostet werden:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {[
+                            { key: 'post_180', label: '🔥 180' },
+                            { key: 'post_match_won', label: '🏆 Match Won' },
+                            { key: 'post_game_won', label: '✅ Leg Won' },
+                            { key: 'post_busted', label: '💥 Bust' },
+                            { key: 'post_high_score', label: '💪 High Score' },
+                            { key: 'post_achievements', label: '🏅 Achievements' },
+                        ].map(evt => (
+                            <label key={evt.key} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'var(--bg)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                                <input type="checkbox" checked={discordCfg[evt.key] !== false}
+                                    onChange={e => saveDiscord({ [evt.key]: e.target.checked })}
+                                    style={{ accentColor: 'var(--accent)' }} />
+                                {evt.label}
+                            </label>
+                        ))}
+                    </div>
+                </>}
+            </div>
+
+            {/* ═══ OBS ═══ */}
+            <div className="card" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 28 }}>🎥</span>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>OBS Browser Source</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Transparentes Overlay für deinen Stream</div>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="btn btn-primary" onClick={() => {
+                        navigator.clipboard.writeText(window.location.origin + '/display');
+                        toast('URL kopiert!', 'success');
+                    }}>📋 Display URL kopieren</button>
+                    <button className="btn" onClick={() => {
+                        navigator.clipboard.writeText(window.location.origin + '/lobby');
+                        toast('URL kopiert!', 'success');
+                    }}>🏠 Lobby URL kopieren</button>
+                    <button className="btn" onClick={() => window.open('/display', '_blank')}>👁 Vorschau</button>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-dim)', padding: 10, background: 'var(--bg)', borderRadius: 6 }}>
+                    <strong>OBS Setup:</strong> Quellen → + → Browser → URL: <code>{window.location.origin}/display</code> → Breite: 1920 → Höhe: 1080 → ✓ Transparenter Hintergrund
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
 // ─── Achievements Page ───────────────────────────────────────────────────────
 
 function AchievementsPage() {
@@ -7466,6 +7899,8 @@ function App() {
             case 'stats': return <StatsPage />;
             case 'achievements': return <AchievementsPage />;
             case 'music': return <MusicPage />;
+            case 'led-designer': return <LEDDesignerPage />;
+            case 'integrations': return <IntegrationsPage />;
             case 'flash': return <FlashPage devices={devices} />;
             case 'presets': return <PresetsPage devices={devices} />;
             case 'settings': return <SettingsPage />;

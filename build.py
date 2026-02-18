@@ -115,7 +115,8 @@ def build():
     backend_modules = [
         "autodarts_client", "device_manager", "wled_client",
         "config_manager", "event_defaults", "caller_defaults",
-        "updater", "esp_flasher", "paths", "crowd_engine", "i18n", "player_profiles", "achievements",
+        "updater", "esp_flasher", "paths", "crowd_engine", "i18n",
+        "player_profiles", "achievements", "led_designer", "twitch_obs", "discord_bot",
     ]
 
     args = [

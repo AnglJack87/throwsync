@@ -1,13 +1,13 @@
 {
-    "version": "2.0.0",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.0.0/throwsync-v2.0.0.zip",
+    "version": "2.1.0",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.1.0/throwsync-v2.1.0.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.0.0/throwsync-v2.0.0.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.0.0/throwsync-2.0.0-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.0.0/throwsync-2.0.0-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.0.0/throwsync-2.0.0-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.1.0/throwsync-v2.1.0.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.1.0/throwsync-2.1.0-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.1.0/throwsync-2.1.0-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.1.0/throwsync-2.1.0-macos-arm64"
     },
-    "changelog": "# v2.0.0 — Major Release\n\n- 🏅 **Achievement System** — 22 Badges in 4 Kategorien (Score, Siege, Checkout, Ausdauer)\n- 📱 **PWA Support** — ThrowSync als App auf Handy/Tablet installierbar\n- 🏠 **Lobby Display** — Warte-Screen mit Spieler-Profilen und Uhr\n- 📊 **Statistik-Dashboard** — Score-Verteilung, Leaderboard, Avg/Checkout%\n- 🎵 **Musik-Player** — Hintergrundmusik mit Playlist, Shuffle, Auto-Ducking\n- 🎭 **Spieler-Profile** — Walk-On, LED-Themes, Victory/Bust Clips\n- 🎭 **Crowd Sound Engine** — Dynamische Publikums-Sounds\n- 🌍 **Multi-Language** — DE/EN/NL/FR\n- 🔖 **Bookmarklet Overlay** — HUD in Autodarts/Darthelfer injizierbar\n- 🧪 **Overlay Test-Buttons**\n- 🌐 **Netzwerk-IPs** im Systeminfo",
+    "changelog": "# v2.1.0\n\n- 💡 **LED Animations-Designer** — Eigene Keyframe-Animationen bauen, 6 Presets, Live-Preview auf WLED\n- 📺 **Twitch Chat Bot** — Game-Events live in deinen Twitch-Chat posten\n- 💬 **Discord Webhook** — Rich Embeds für 180s, Match Wins, Achievements in Discord\n- 🎥 **OBS Integration** — Setup-Guide mit Browser Source URLs\n- 🏠 **Lobby Display** — Warte-Screen zwischen Spielen\n- 📱 **PWA** — Als App installierbar auf Handy/Tablet/Desktop\n- 🏅 **22 Achievements** — Bronze bis Diamond Badges\n- 📊 **Statistik-Dashboard** — Leaderboard, Score-Verteilung\n- 🎵 **Musik-Player** — Playlist, Shuffle, Auto-Ducking\n- 🎭 **Spieler-Profile** — Walk-On, LED-Themes, Clips\n- 🎭 **Crowd Engine** — Dynamische Publikums-Sounds\n- 🌍 **4 Sprachen** — DE/EN/NL/FR",
     "size": 0,
     "min_python": "3.8",
     "released": "2026-02-18"
