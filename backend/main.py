@@ -191,7 +191,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.6.1", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.6.2", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1693,6 +1693,76 @@ async def toggle_module(module_id: str):
 
     else:
         raise HTTPException(400, f"Modul '{module_id}' kann nicht umgeschaltet werden")
+
+
+# ─── Display Overlay Test ─────────────────────────────────────────────────────
+
+@app.post("/api/display/test")
+async def test_display_overlay(data: dict):
+    """Send test events to all connected overlay/display clients."""
+    event = data.get("event", "throw")
+
+    if event == "throw":
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "throw", "throw_text": "T20", "points": 60, "turn_score": 60, "darts_in_turn": 1,
+        }})
+        await asyncio.sleep(0.5)
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "throw", "throw_text": "T19", "points": 57, "turn_score": 117, "darts_in_turn": 2,
+        }})
+        await asyncio.sleep(0.5)
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "throw", "throw_text": "T18", "points": 54, "turn_score": 171, "darts_in_turn": 3,
+        }})
+    elif event == "score_140":
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "throw", "throw_text": "T20", "points": 60, "turn_score": 140, "darts_in_turn": 3,
+        }})
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "state_update", "remaining": 161, "scores": [161, 301],
+        }})
+    elif event == "180":
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "throw", "throw_text": "T20", "points": 60, "turn_score": 180, "darts_in_turn": 3,
+        }})
+        await broadcast_ws({"type": "event_fired", "entry": {"event": "180", "board": "test"}})
+        # Also trigger clip if assigned
+        clip_assignments = config_manager.get("clip_assignments", {})
+        clip_info = clip_assignments.get("180")
+        if clip_info and clip_info.get("clip"):
+            await broadcast_ws({"type": "caller_clip", "clip": clip_info["clip"], "clip_duration": clip_info.get("duration", 5), "event": "180"})
+    elif event == "bust":
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "throw", "throw_text": "S5", "points": 5, "turn_score": 5, "darts_in_turn": 1,
+        }})
+        await broadcast_ws({"type": "event_fired", "entry": {"event": "busted", "board": "test"}})
+        clip_assignments = config_manager.get("clip_assignments", {})
+        clip_info = clip_assignments.get("busted")
+        if clip_info and clip_info.get("clip"):
+            await broadcast_ws({"type": "caller_clip", "clip": clip_info["clip"], "clip_duration": clip_info.get("duration", 5), "event": "busted"})
+    elif event == "game_won":
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "throw", "throw_text": "D16", "points": 32, "turn_score": 32, "darts_in_turn": 3,
+        }})
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "state_update", "remaining": 0, "scores": [0, 220],
+        }})
+        await broadcast_ws({"type": "event_fired", "entry": {"event": "game_won", "board": "test"}})
+        clip_assignments = config_manager.get("clip_assignments", {})
+        clip_info = clip_assignments.get("game_won")
+        if clip_info and clip_info.get("clip"):
+            await broadcast_ws({"type": "caller_clip", "clip": clip_info["clip"], "clip_duration": clip_info.get("duration", 5), "event": "game_won"})
+    elif event == "match_won":
+        await broadcast_ws({"type": "display_state", "data": {
+            "type": "state_update", "remaining": 0, "scores": [0, 180],
+        }})
+        await broadcast_ws({"type": "event_fired", "entry": {"event": "match_won", "board": "test"}})
+        clip_assignments = config_manager.get("clip_assignments", {})
+        clip_info = clip_assignments.get("match_won")
+        if clip_info and clip_info.get("clip"):
+            await broadcast_ws({"type": "caller_clip", "clip": clip_info["clip"], "clip_duration": clip_info.get("duration", 5), "event": "match_won"})
+
+    return {"success": True, "event": event}
 
 
 # ─── Serve Frontend ───────────────────────────────────────────────────────────

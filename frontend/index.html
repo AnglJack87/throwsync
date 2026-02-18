@@ -4738,6 +4738,28 @@ function SettingsPage() {
                 <small style={{color: 'var(--text-dim)', marginTop: 8, display: 'block'}}>
                     Bookmarklet: 1 Klick auf Autodarts = HUD + Clips erscheinen. • OBS: {window.location.origin}/display als Browser-Source.
                 </small>
+
+                <div style={{marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)'}}>
+                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10}}>
+                        <span style={{fontWeight: 600, fontSize: 14}}>🧪 Overlay testen</span>
+                        <small style={{color: 'var(--text-dim)'}}>Aktiviere das Bookmarklet auf einer Seite, dann klicke hier</small>
+                    </div>
+                    <div style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                        {[
+                            {label: '🎯 Wurf T20', endpoint: 'throw'},
+                            {label: '⚡ 3-Dart 140', endpoint: 'score_140'},
+                            {label: '🔥 180!', endpoint: '180'},
+                            {label: '💥 Bust', endpoint: 'bust'},
+                            {label: '🎉 Leg Won', endpoint: 'game_won'},
+                            {label: '🏆 Match Won', endpoint: 'match_won'},
+                        ].map(t => (
+                            <button key={t.endpoint} className="btn" style={{fontSize: 12, padding: '5px 10px'}}
+                                onClick={() => API.post('/api/display/test', {event: t.endpoint}).then(() => toast.show('Test gesendet!', 'info'))}>
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
 
             <div className="card">
