@@ -168,6 +168,35 @@ async def broadcast_caller_sound(sounds: list, event_name: str = "", data: dict 
             "event": event_name,
         })
 
+    # ── Crowd Sound Engine ──
+    crowd_cfg = config_manager.get("crowd_config", {})
+    if crowd_cfg.get("enabled", False):
+        from crowd_engine import get_crowd_reaction, CROWD_EVENTS
+        score = data.get("round_score", 0) if data else 0
+        crowd_keys = get_crowd_reaction(score, event_name)
+        if crowd_keys:
+            crowd_saved = config_manager.get("crowd_sounds", {})
+            crowd_resolved = []
+            for key in crowd_keys:
+                meta = CROWD_EVENTS.get(key, {})
+                entry = crowd_saved.get(key, {})
+                sound_file = entry.get("sound", "")
+                if sound_file:
+                    crowd_resolved.append({
+                        "key": key,
+                        "sound": sound_file,
+                        "volume": entry.get("volume", meta.get("default_volume", 0.5)),
+                        "priority": 0,
+                    })
+            if crowd_resolved:
+                crowd_vol = crowd_cfg.get("master_volume", 0.5)
+                await broadcast_ws({
+                    "type": "crowd_play",
+                    "sounds": crowd_resolved,
+                    "event": event_name,
+                    "volume": crowd_vol,
+                })
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -191,7 +220,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.6.3", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.7.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1332,6 +1361,68 @@ async def save_clip_assignments(data: dict):
     return {"success": True}
 
 
+# ─── Crowd Sound Engine ──────────────────────────────────────────────────────
+
+@app.get("/api/crowd/config")
+async def get_crowd_config():
+    """Get crowd engine configuration."""
+    from crowd_engine import DEFAULT_CROWD_CONFIG
+    cfg = config_manager.get("crowd_config", {})
+    return {**DEFAULT_CROWD_CONFIG, **cfg}
+
+
+@app.post("/api/crowd/config")
+async def save_crowd_config(data: dict):
+    """Save crowd engine configuration."""
+    config_manager.set("crowd_config", data)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.get("/api/crowd/sounds")
+async def get_crowd_sounds():
+    """Get all crowd sound events with assignments."""
+    from crowd_engine import CROWD_EVENTS
+    saved = config_manager.get("crowd_sounds", {})
+    result = {}
+    for key, meta in CROWD_EVENTS.items():
+        entry = saved.get(key, {})
+        result[key] = {
+            **meta,
+            "sound": entry.get("sound", ""),
+            "volume": entry.get("volume", meta.get("default_volume", 0.5)),
+            "enabled": entry.get("enabled", True),
+        }
+    return {"sounds": result}
+
+
+@app.post("/api/crowd/sounds")
+async def save_crowd_sounds(data: dict):
+    """Save crowd sound assignments."""
+    config_manager.set("crowd_sounds", data)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.post("/api/crowd/test")
+async def test_crowd_sound(data: dict):
+    """Test a crowd sound by key."""
+    key = data.get("key", "")
+    saved = config_manager.get("crowd_sounds", {})
+    entry = saved.get(key, {})
+    if not entry.get("sound"):
+        raise HTTPException(404, f"Kein Crowd-Sound für {key}")
+    crowd_cfg = config_manager.get("crowd_config", {})
+    vol = crowd_cfg.get("master_volume", 0.5)
+    await broadcast_ws({
+        "type": "crowd_play",
+        "sounds": [{"key": key, "sound": entry["sound"], "volume": entry.get("volume", 0.5), "priority": 0}],
+        "event": "test",
+        "volume": vol,
+    })
+    return {"success": True}
+
+
 @app.post("/api/caller/test")
 async def test_caller_sound(data: dict):
     """Test-play a caller sound by broadcasting to connected clients."""
@@ -1473,7 +1564,21 @@ async def test_caller_scenario(data: dict):
 @app.get("/api/update/status")
 async def api_update_status():
     """Get current update system status and local version."""
-    return get_update_status()
+    status = get_update_status()
+    # Add network IPs
+    import socket
+    ips = []
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith('127.'):
+                ips.append(ip)
+        ips = list(dict.fromkeys(ips))  # dedupe, keep order
+    except Exception:
+        pass
+    status["network_ips"] = ips
+    return status
 
 
 @app.get("/api/update/check")
@@ -1481,6 +1586,19 @@ async def api_update_check():
     """Check if a newer version is available."""
     manifest_url = config_manager.get("update_manifest_url", DEFAULT_MANIFEST_URL)
     result = await check_for_update(manifest_url)
+    # Add network IPs
+    import socket
+    ips = []
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith('127.'):
+                ips.append(ip)
+        ips = list(dict.fromkeys(ips))
+    except Exception:
+        pass
+    result["network_ips"] = ips
     return result
 
 

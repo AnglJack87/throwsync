@@ -253,6 +253,19 @@
                 showClip(msg.clip, msg.clip_duration || 5);
             }
 
+            // Crowd sounds (separate channel, concurrent with caller)
+            if (msg.type === 'crowd_play' && msg.sounds) {
+                const gv = msg.volume || 0.5;
+                msg.sounds.forEach(s => {
+                    if (s.sound) {
+                        const url = s.sound.startsWith('http') ? s.sound : 'http://' + TS_HOST + '/sounds/' + s.sound;
+                        const a = new Audio(url);
+                        a.volume = Math.min(1, Math.max(0, gv * (s.volume || 0.5)));
+                        a.play().catch(() => {});
+                    }
+                });
+            }
+
             // Display state (score, remaining, throws)
             if (msg.type === 'display_state') {
                 const d = msg.data || {};

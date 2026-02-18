@@ -2126,6 +2126,123 @@ function AutodartsPage({ autodartsConnected, devices }) {
 
 // ─── Events Page ─────────────────────────────────────────────────────────────
 
+function CrowdPage() {
+    const [config, setCfg] = useState({ enabled: false, master_volume: 0.5 });
+    const [sounds, setSounds] = useState({});
+    const [soundFiles, setSoundFiles] = useState([]);
+    const toast = useToast();
+
+    const categories = [
+        { id: 'ambient', label: '🌫 Ambient', desc: 'Hintergrund-Atmosphäre' },
+        { id: 'positive', label: '🎉 Jubel', desc: 'Positive Reaktionen auf gute Scores' },
+        { id: 'negative', label: '😩 Enttäuschung', desc: 'Reaktionen auf schlechte Würfe' },
+        { id: 'special', label: '✨ Spezial', desc: 'Besondere Momente' },
+    ];
+
+    useEffect(() => {
+        API.get('/api/crowd/config').then(d => setCfg(d || {}));
+        API.get('/api/crowd/sounds').then(d => setSounds(d?.sounds || {}));
+        API.get('/api/caller/sounds').then(d => {
+            // Reuse the sound file list from caller
+        });
+        API.get('/api/caller/files').then(d => setSoundFiles(d?.sounds || []));
+    }, []);
+
+    const saveCfg = (update) => {
+        const next = { ...config, ...update };
+        setCfg(next);
+        API.post('/api/crowd/config', next);
+    };
+
+    const saveSound = (key, field, value) => {
+        const next = { ...sounds, [key]: { ...sounds[key], [field]: value } };
+        setSounds(next);
+        // Save only the assignment data (sound, volume, enabled)
+        const toSave = {};
+        Object.entries(next).forEach(([k, v]) => {
+            toSave[k] = { sound: v.sound || '', volume: v.volume || 0.5, enabled: v.enabled !== false };
+        });
+        API.post('/api/crowd/sounds', toSave);
+    };
+
+    const testSound = (key) => {
+        API.post('/api/crowd/test', { key }).catch(() => toast.show('Kein Sound zugewiesen', 'error'));
+    };
+
+    return <>
+        <div className="card" style={{padding: 16, marginBottom: 12}}>
+            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                <div>
+                    <h3 style={{margin: 0}}>🎭 Crowd Sound Engine</h3>
+                    <small style={{color: 'var(--text-dim)'}}>
+                        Dynamische Publikums-Sounds die auf dein Spiel reagieren
+                    </small>
+                </div>
+                <label style={{display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer'}}>
+                    <span style={{fontSize: 13, color: config.enabled ? 'var(--accent)' : 'var(--text-dim)'}}>
+                        {config.enabled ? 'Aktiv' : 'Aus'}
+                    </span>
+                    <input type="checkbox" checked={config.enabled || false}
+                        onChange={e => saveCfg({ enabled: e.target.checked })}
+                        style={{accentColor: 'var(--accent)', width: 18, height: 18}} />
+                </label>
+            </div>
+
+            {config.enabled && (
+                <div style={{marginTop: 12, display: 'flex', alignItems: 'center', gap: 12}}>
+                    <label style={{fontSize: 13, color: 'var(--text-dim)', whiteSpace: 'nowrap'}}>Master-Lautstärke:</label>
+                    <input type="range" min="0" max="1" step="0.05" value={config.master_volume || 0.5}
+                        onChange={e => saveCfg({ master_volume: parseFloat(e.target.value) })}
+                        style={{flex: 1, accentColor: 'var(--accent)'}} />
+                    <span style={{fontFamily: 'monospace', fontSize: 13, minWidth: 36}}>
+                        {Math.round((config.master_volume || 0.5) * 100)}%
+                    </span>
+                </div>
+            )}
+        </div>
+
+        {config.enabled && categories.map(cat => {
+            const catSounds = Object.entries(sounds).filter(([k, v]) => v.category === cat.id);
+            if (catSounds.length === 0) return null;
+            return (
+                <div key={cat.id} className="card" style={{padding: 16, marginBottom: 12}}>
+                    <h4 style={{margin: '0 0 4px'}}>{cat.label}</h4>
+                    <small style={{color: 'var(--text-dim)', display: 'block', marginBottom: 12}}>{cat.desc}</small>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
+                        {catSounds.map(([key, s]) => (
+                            <div key={key} style={{
+                                display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+                                background: s.sound ? 'rgba(139,92,246,0.06)' : 'transparent',
+                                borderRadius: 6, border: '1px solid var(--border)',
+                                opacity: s.enabled === false ? 0.5 : 1,
+                            }}>
+                                <input type="checkbox" checked={s.enabled !== false}
+                                    onChange={e => saveSound(key, 'enabled', e.target.checked)}
+                                    style={{accentColor: 'var(--accent)'}} />
+                                <div style={{minWidth: 140}}>
+                                    <div style={{fontSize: 13, fontWeight: 500}}>{s.label}</div>
+                                    <div style={{fontSize: 11, color: 'var(--text-dim)'}}>{s.description}</div>
+                                </div>
+                                <select value={s.sound || ''} onChange={e => saveSound(key, 'sound', e.target.value)}
+                                    style={{flex: 1, padding: '4px 6px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12}}>
+                                    <option value="">— Kein Sound —</option>
+                                    {soundFiles.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                                </select>
+                                <input type="range" min="0" max="1" step="0.05" value={s.volume || 0.5}
+                                    onChange={e => saveSound(key, 'volume', parseFloat(e.target.value))}
+                                    style={{width: 60, accentColor: 'var(--accent)'}} title={`${Math.round((s.volume||0.5)*100)}%`} />
+                                <button onClick={() => testSound(key)} title="Testen"
+                                    style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--accent)'}}>▶</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        })}
+    </>;
+}
+
+
 function ClipsTab() {
     const [clipFiles, setClipFiles] = useState([]);
     const [assignments, setAssignments] = useState({});
@@ -2431,6 +2548,7 @@ function EventsPage({ devices }) {
                     {id: 'led', label: '⚡ LED Effekte', count: `${enabledCount}/${totalCount}`},
                     {id: 'caller', label: '🎙 Caller Sounds'},
                     {id: 'clips', label: '🎬 Clips'},
+                    {id: 'crowd', label: '🎭 Crowd'},
                 ].map(tab => (
                     <div key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                         flex: 1, padding: '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'center',
@@ -2679,6 +2797,9 @@ function EventsPage({ devices }) {
 
             {/* ── Clips Tab ── */}
             {activeTab === 'clips' && <ClipsTab clipFiles={[]} />}
+
+            {/* ── Crowd Tab ── */}
+            {activeTab === 'crowd' && <CrowdPage />}
 
             {/* Edit Modal */}
             {editEvent && events[editEvent] && (
@@ -4768,9 +4889,30 @@ function SettingsPage() {
                     <div>Version: {updateStatus?.local_version || '?'}</div>
                     <div>Python: {updateStatus?.python_version || '?'}</div>
                     <div>Plattform: {updateStatus?.platform || '?'}</div>
-                    <div>Server: {window.location.origin}</div>
                     <div>Geräte: {config.devices?.length || 0}</div>
                     <div>Presets: {config.presets?.length || 0}</div>
+                </div>
+                <div style={{marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)'}}>
+                    <div style={{fontWeight: 600, fontSize: 14, marginBottom: 8}}>🌐 Server-Zugriff</div>
+                    <div style={{fontSize: 13, color: 'var(--text-dim)', marginBottom: 8}}>
+                        Öffne ThrowSync auf anderen Geräten im Netzwerk:
+                    </div>
+                    {(updateStatus?.network_ips || []).map(ip => (
+                        <div key={ip} style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4}}>
+                            <code style={{background: 'var(--bg-input)', padding: '3px 8px', borderRadius: 4, fontSize: 13}}>
+                                http://{ip}:8420
+                            </code>
+                            <button className="btn" style={{padding: '2px 8px', fontSize: 11}}
+                                onClick={() => { navigator.clipboard.writeText(`http://${ip}:8420`); toast.show('URL kopiert!', 'success'); }}>
+                                📋
+                            </button>
+                        </div>
+                    ))}
+                    {(!updateStatus?.network_ips || updateStatus.network_ips.length === 0) && (
+                        <code style={{background: 'var(--bg-input)', padding: '3px 8px', borderRadius: 4, fontSize: 13}}>
+                            {window.location.origin}
+                        </code>
+                    )}
                 </div>
             </div>
         </div>
@@ -6249,6 +6391,19 @@ function App() {
                 const duration = lastMessage.clip_duration || 5;
                 setActiveClip({ url: clipUrl, duration });
                 setTimeout(() => setActiveClip(null), duration * 1000);
+            }
+
+            // Crowd sound playback (separate channel, plays alongside caller)
+            if (lastMessage.type === 'crowd_play' && lastMessage.sounds) {
+                const globalVol = lastMessage.volume || 0.5;
+                lastMessage.sounds.forEach(s => {
+                    if (s.sound) {
+                        const url = s.sound.startsWith('http') ? s.sound : `/sounds/${s.sound}`;
+                        const audio = new Audio(url);
+                        audio.volume = Math.min(1, Math.max(0, globalVol * (s.volume || 0.5)));
+                        audio.play().catch(() => {});
+                    }
+                });
             }
 
             // Update progress

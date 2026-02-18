@@ -1,14 +1,14 @@
 {
-    "version": "1.6.3",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.6.3/throwsync-v1.6.3.zip",
+    "version": "1.7.0",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-v1.7.0.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v1.6.3/throwsync-v1.6.3.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.6.3/throwsync-1.6.3-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.6.3/throwsync-1.6.3-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v1.6.3/throwsync-1.6.3-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-v1.7.0.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-1.7.0-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-1.7.0-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-1.7.0-macos-arm64"
     },
-    "changelog": "# v1.6.3\n\n- 🎬 **Video-Clips** — MP4/GIF/WebM Overlay bei Events\n- 🖥 **Display Overlay** — Popup-Fenster mit Score-HUD, Clips, Event-Toasts\n- ⚡ **Caller v2** — Preloading, Priority-Interrupt, 4s Timeout, Queue-Limit\n- 🔧 **Manifest-URL Fix** — kein 404 mehr\n- 🔧 **Version-Erkennung Fix** — paths.py Integration",
+    "changelog": "# v1.7.0\n\n- 🎭 **Crowd Sound Engine** — Dynamische Publikums-Sounds (Jubel, Stöhnen, Spannung)\n- 🌐 **Netzwerk-IPs** — Server-Adressen in Einstellungen angezeigt\n- 🔖 **Bookmarklet Overlay** — HUD + Clips direkt in Autodarts/Darthelfer\n- 🧪 **Overlay Test-Buttons** — Events testen ohne zu spielen",
     "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-17"
+    "released": "2026-02-18"
 }
