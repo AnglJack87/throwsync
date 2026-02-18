@@ -1,13 +1,13 @@
 {
-    "version": "1.7.0",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-v1.7.0.zip",
+    "version": "1.8.0",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v1.8.0/throwsync-v1.8.0.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-v1.7.0.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-1.7.0-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-1.7.0-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v1.7.0/throwsync-1.7.0-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v1.8.0/throwsync-v1.8.0.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.8.0/throwsync-1.8.0-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v1.8.0/throwsync-1.8.0-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v1.8.0/throwsync-1.8.0-macos-arm64"
     },
-    "changelog": "# v1.7.0\n\n- 🎭 **Crowd Sound Engine** — Dynamische Publikums-Sounds (Jubel, Stöhnen, Spannung)\n- 🌐 **Netzwerk-IPs** — Server-Adressen in Einstellungen angezeigt\n- 🔖 **Bookmarklet Overlay** — HUD + Clips direkt in Autodarts/Darthelfer\n- 🧪 **Overlay Test-Buttons** — Events testen ohne zu spielen",
+    "changelog": "# v1.8.0\n\n- 🌍 **Multi-Language** — DE, EN, NL, FR (107 Übersetzungsschlüssel)\n- 🎭 **Crowd Sound Engine** — Dynamische Publikums-Sounds\n- 🌐 **Netzwerk-IPs** — Server-Adressen mit Kopier-Button\n- 🔖 **Bookmarklet** — HUD + Clips in Autodarts injizierbar\n- 🧪 **Overlay Test-Buttons**",
     "size": 0,
     "min_python": "3.8",
     "released": "2026-02-18"

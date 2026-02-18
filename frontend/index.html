@@ -717,6 +717,52 @@ function ToastProvider({ children }) {
 function useToast() { return useContext(ToastContext); }
 
 
+// ─── i18n System ─────────────────────────────────────────────────────────────
+
+const I18nContext = createContext({ t: (k) => k, lang: 'de', setLang: () => {} });
+
+function I18nProvider({ children }) {
+    const [lang, setLangState] = useState('de');
+    const [translations, setTranslations] = useState({});
+    const [loaded, setLoaded] = useState(false);
+
+    useEffect(() => {
+        // Load current language from backend
+        API.get('/api/i18n').then(data => {
+            if (data?.current) {
+                setLangState(data.current);
+                API.get(`/api/i18n/${data.current}`).then(d => {
+                    if (d?.translations) setTranslations(d.translations);
+                    setLoaded(true);
+                });
+            } else {
+                setLoaded(true);
+            }
+        }).catch(() => setLoaded(true));
+    }, []);
+
+    const setLang = useCallback((newLang) => {
+        setLangState(newLang);
+        API.post('/api/i18n', { language: newLang });
+        API.get(`/api/i18n/${newLang}`).then(d => {
+            if (d?.translations) setTranslations(d.translations);
+        });
+    }, []);
+
+    const t = useCallback((key, fallback) => {
+        return translations[key] || fallback || key;
+    }, [translations]);
+
+    return (
+        <I18nContext.Provider value={{ t, lang, setLang, loaded }}>
+            {children}
+        </I18nContext.Provider>
+    );
+}
+
+function useI18n() { return useContext(I18nContext); }
+
+
 // ─── WebSocket Hook ──────────────────────────────────────────────────────────
 
 function useWebSocket() {
@@ -765,15 +811,16 @@ function useWebSocket() {
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, version }) {
+    const { t } = useI18n();
     const pages = [
-        { id: 'dashboard', icon: '◈', label: 'Module' },
-        { id: 'devices', icon: '⬡', label: 'Geräte' },
-        { id: 'leds', icon: '◆', label: 'LED Kontrolle' },
-        { id: 'autodarts', icon: '◎', label: 'Autodarts' },
-        { id: 'events', icon: '⚡', label: 'Events & Caller' },
-        { id: 'flash', icon: '↯', label: 'Firmware' },
-        { id: 'presets', icon: '★', label: 'Presets' },
-        { id: 'settings', icon: '⚙', label: 'Einstellungen' },
+        { id: 'dashboard', icon: '\u25C8', label: t('dash.modules', 'Module') },
+        { id: 'devices', icon: '\u2B21', label: t('nav.devices', 'Ger\u00e4te') },
+        { id: 'leds', icon: '\u25C6', label: 'LED' },
+        { id: 'autodarts', icon: '\u25CE', label: 'Autodarts' },
+        { id: 'events', icon: '\u26A1', label: t('nav.events', 'Events & Caller') },
+        { id: 'flash', icon: '\u21AF', label: 'Firmware' },
+        { id: 'presets', icon: '\u2605', label: 'Presets' },
+        { id: 'settings', icon: '\u2699', label: t('nav.settings', 'Einstellungen') },
     ];
 
     return (
@@ -2391,6 +2438,7 @@ function EventsPage({ devices }) {
     const [bulkMode, setBulkMode] = useState(false);
     const [selected, setSelected] = useState(new Set());
     const [showBulkEdit, setShowBulkEdit] = useState(false);
+    const { t } = useI18n();
     const [showLog, setShowLog] = useState(false);
     const [eventLog, setEventLog] = useState([]);
     const [activeTab, setActiveTab] = useState('led'); // 'led' or 'caller'
@@ -2545,10 +2593,10 @@ function EventsPage({ devices }) {
             {/* Tab Switcher */}
             <div style={{display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-secondary)', borderRadius: 8, padding: 3}}>
                 {[
-                    {id: 'led', label: '⚡ LED Effekte', count: `${enabledCount}/${totalCount}`},
-                    {id: 'caller', label: '🎙 Caller Sounds'},
-                    {id: 'clips', label: '🎬 Clips'},
-                    {id: 'crowd', label: '🎭 Crowd'},
+                    {id: 'led', label: `\u26A1 ${t('tab.led', 'LED Effekte')}`, count: `${enabledCount}/${totalCount}`},
+                    {id: 'caller', label: `\uD83C\uDF99 ${t('tab.caller', 'Caller Sounds')}`},
+                    {id: 'clips', label: `\uD83C\uDFAC ${t('tab.clips', 'Clips')}`},
+                    {id: 'crowd', label: `\uD83C\uDFAD ${t('tab.crowd', 'Crowd')}`},
                 ].map(tab => (
                     <div key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                         flex: 1, padding: '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'center',
@@ -4661,12 +4709,44 @@ function SettingsPage() {
     const settings = config.settings || {};
     const hasUpdate = updateCheck?.available;
     const isStaged = updateStatus?.update_staged;
+    const { t, lang, setLang } = useI18n();
+
+    const langOptions = [
+        { code: 'de', flag: '\uD83C\uDDE9\uD83C\uDDEA', label: 'Deutsch' },
+        { code: 'en', flag: '\uD83C\uDDEC\uD83C\uDDE7', label: 'English' },
+        { code: 'nl', flag: '\uD83C\uDDF3\uD83C\uDDF1', label: 'Nederlands' },
+        { code: 'fr', flag: '\uD83C\uDDEB\uD83C\uDDF7', label: 'Fran\u00e7ais' },
+    ];
 
     return (
         <div>
             <div className="page-header">
-                <h2>Einstellungen</h2>
-                <p>Konfiguration, Updates und Systeminfo</p>
+                <h2>{t('nav.settings', 'Einstellungen')}</h2>
+                <p>{t('set.display_desc', 'Konfiguration, Updates und Systeminfo')}</p>
+            </div>
+
+            {/* ═══ LANGUAGE ═══ */}
+            <div className="card" style={{marginBottom: 20}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
+                    <span style={{fontSize: 28}}>🌍</span>
+                    <div style={{flex: 1}}>
+                        <div style={{fontWeight: 700, fontSize: 16}}>{t('set.language', 'Sprache')}</div>
+                    </div>
+                    <div style={{display: 'flex', gap: 4}}>
+                        {langOptions.map(l => (
+                            <button key={l.code} className="btn"
+                                style={{
+                                    padding: '6px 12px', fontSize: 14,
+                                    background: lang === l.code ? 'var(--accent)' : 'transparent',
+                                    color: lang === l.code ? '#fff' : 'var(--text-dim)',
+                                    border: lang === l.code ? 'none' : '1px solid var(--border)',
+                                }}
+                                onClick={() => setLang(l.code)}>
+                                {l.flag} {l.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
 
             {/* ═══ UPDATE SECTION ═══ */}
@@ -6513,7 +6593,7 @@ function App() {
     );
 }
 
-ReactDOM.render(<App />, document.getElementById('root'));
+ReactDOM.render(<I18nProvider><App /></I18nProvider>, document.getElementById('root'));
 </script>
 </body>
 </html>

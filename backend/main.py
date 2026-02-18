@@ -220,7 +220,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="1.7.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="1.8.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1814,6 +1814,37 @@ async def toggle_module(module_id: str):
 
 
 # ─── Display Overlay Test ─────────────────────────────────────────────────────
+
+@app.get("/api/i18n/{lang}")
+async def get_translations(lang: str):
+    """Get all translations for a language."""
+    from i18n import get_all_translations, LANGUAGES
+    if lang not in LANGUAGES:
+        lang = "de"
+    return {"lang": lang, "translations": get_all_translations(lang)}
+
+
+@app.get("/api/i18n")
+async def get_i18n_info():
+    """Get available languages and current setting."""
+    from i18n import LANGUAGES
+    current = config_manager.get("language", "de")
+    return {"current": current, "languages": LANGUAGES}
+
+
+@app.post("/api/i18n")
+async def set_language(data: dict):
+    """Set the UI language."""
+    from i18n import LANGUAGES
+    lang = data.get("language", "de")
+    if lang not in LANGUAGES:
+        raise HTTPException(400, f"Unknown language: {lang}")
+    config_manager.set("language", lang)
+    config_manager.save()
+    return {"success": True, "language": lang}
+
+
+# ─── Display Overlay Test (continued) ────────────────────────────────────────
 
 @app.post("/api/display/test")
 async def test_display_overlay(data: dict):
