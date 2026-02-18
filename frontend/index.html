@@ -833,7 +833,7 @@ function useWebSocket() {
 function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, version }) {
     const { t } = useI18n();
     const pages = [
-        { id: 'dashboard', icon: '\u25C8', label: t('dash.modules', 'Module') },
+        { id: 'dashboard', icon: '\u25C8', label: t('dash.home', 'Home') },
         { id: 'devices', icon: '\u2B21', label: t('nav.devices', 'Ger\u00e4te') },
         { id: 'leds', icon: '\u25C6', label: 'LED' },
         { id: 'autodarts', icon: '\u25CE', label: 'Autodarts' },
@@ -887,102 +887,232 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, versi
 function DashboardPage({ devices, autodartsConnected }) {
     const [modules, setModules] = useState([]);
     const [toggling, setToggling] = useState(null);
+    const [profiles, setProfiles] = useState([]);
+    const [activePlayer, setActivePlayer] = useState(null);
     const toast = useToast();
+    const { t } = useI18n();
 
     const loadModules = () => API.get('/api/modules').then(d => { if (d?.modules) setModules(d.modules); });
-    useEffect(() => { loadModules(); const iv = setInterval(loadModules, 5000); return () => clearInterval(iv); }, []);
+    useEffect(() => {
+        loadModules();
+        const iv = setInterval(loadModules, 5000);
+        API.get('/api/profiles/players').then(d => {
+            const p = d?.profiles || [];
+            setProfiles(p);
+            const aid = d?.active;
+            if (aid) setActivePlayer(p.find(x => x.id === aid));
+        });
+        return () => clearInterval(iv);
+    }, []);
 
     const toggle = async (id) => {
         setToggling(id);
         const res = await API.post(`/api/modules/${id}/toggle`);
-        if (res) toast(`${id}: ${res.detail}`, 'success');
+        if (res) toast(`${res.detail}`, 'success');
         await loadModules();
         setToggling(null);
     };
 
-    const onlineCount = devices.filter(d => d.online).length;
+    const onlineDevices = devices.filter(d => d.online);
     const totalLeds = devices.reduce((sum, d) => sum + (d.led_count || 0), 0);
+    const runningModules = modules.filter(m => m.running);
+
+    // System health color
+    const healthColor = autodartsConnected && onlineDevices.length > 0 ? 'var(--success)' :
+                        onlineDevices.length > 0 || autodartsConnected ? 'var(--warning)' : 'var(--text-dim)';
+    const healthText = autodartsConnected && onlineDevices.length > 0 ? 'Bereit zum Spielen' :
+                       onlineDevices.length > 0 ? 'Autodarts nicht verbunden' :
+                       autodartsConnected ? 'Keine WLED-Geräte' : 'Nicht verbunden';
 
     return (
         <div>
-            <div className="page-header">
-                <h2>Module & Status</h2>
-                <p>Alle ThrowSync-Module auf einen Blick — starten, stoppen, Versionen prüfen</p>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid-4" style={{marginBottom: 24}}>
-                {[
-                    { label: 'Geräte', value: `${onlineCount}/${devices.length}`, color: 'var(--success)' },
-                    { label: 'LEDs', value: totalLeds, color: 'var(--accent-bright)' },
-                    { label: 'Autodarts', value: autodartsConnected ? 'Live' : 'Aus', color: autodartsConnected ? 'var(--success)' : 'var(--danger)' },
-                    { label: 'Module', value: `${modules.filter(m => m.running).length}/${modules.length}`, color: 'var(--info)' },
-                ].map((s, i) => (
-                    <div key={i} className="card" style={{textAlign: 'center', padding: '16px 12px'}}>
-                        <div style={{fontSize: 26, fontWeight: 700, color: s.color, fontFamily: 'JetBrains Mono'}}>{s.value}</div>
-                        <div style={{fontSize: 11, color: 'var(--text-dim)', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1}}>{s.label}</div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Module Cards */}
-            <div style={{display: 'grid', gap: 10}}>
-                {modules.map(m => (
-                    <div key={m.id} className="card" style={{
-                        padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14,
-                        borderLeft: `3px solid ${m.running ? 'var(--success)' : 'var(--border)'}`,
-                        opacity: m.running ? 1 : 0.7,
-                    }}>
-                        <span style={{fontSize: 22, width: 32, textAlign: 'center'}}>{m.icon}</span>
-                        <div style={{flex: 1, minWidth: 0}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'}}>
-                                <span style={{fontWeight: 700, fontSize: 14}}>{m.name}</span>
-                                <span style={{
-                                    fontSize: 10, fontFamily: 'JetBrains Mono', padding: '1px 6px',
-                                    background: 'rgba(108,92,231,0.15)', borderRadius: 4, color: 'var(--accent-bright)',
-                                }}>v{m.version}</span>
-                                <span className={`badge ${m.running ? 'badge-success' : 'badge-danger'}`} style={{fontSize: 10}}>
-                                    {m.running ? 'Aktiv' : 'Aus'}
-                                </span>
-                            </div>
-                            <div style={{fontSize: 12, color: 'var(--text-dim)', marginTop: 2}}>
-                                {m.description} — <span style={{color: 'var(--text-secondary)'}}>{m.detail}</span>
-                            </div>
-                        </div>
-                        {m.can_toggle && (
-                            <button
-                                className={`btn btn-sm ${m.running ? 'btn-danger' : 'btn-success'}`}
-                                style={{minWidth: 70, fontSize: 12}}
-                                disabled={toggling === m.id}
-                                onClick={() => toggle(m.id)}>
-                                {toggling === m.id ? '...' : m.running ? 'Stop' : 'Start'}
-                            </button>
-                        )}
-                    </div>
-                ))}
-            </div>
-
-            {/* Quick Controls */}
-            <div className="card" style={{marginTop: 20, padding: '14px 18px'}}>
-                <div style={{fontWeight: 600, fontSize: 13, marginBottom: 10}}>Schnellsteuerung</div>
-                <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
-                    <button className="btn btn-sm btn-success" onClick={() => API.post('/api/devices/all/state', {on: true})}>💡 Alle An</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => API.post('/api/devices/all/state', {on: false})}>Alle Aus</button>
+            {/* ═══ Hero Status Bar ═══ */}
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: 16, padding: '20px 24px',
+                background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(59,130,246,0.04))',
+                borderRadius: 12, marginBottom: 20, border: '1px solid rgba(139,92,246,0.15)',
+            }}>
+                <div style={{
+                    width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: `${healthColor}22`, fontSize: 24,
+                }}>
+                    {autodartsConnected && onlineDevices.length > 0 ? '🎯' : '⏳'}
+                </div>
+                <div style={{flex: 1}}>
+                    <div style={{fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px'}}>ThrowSync</div>
+                    <div style={{fontSize: 13, color: healthColor, fontWeight: 600}}>{healthText}</div>
+                </div>
+                <div style={{display: 'flex', gap: 20, alignItems: 'center'}}>
                     {[
-                        {color: '#ff0000', label: 'Rot'}, {color: '#00ff00', label: 'Grün'},
-                        {color: '#0000ff', label: 'Blau'}, {color: '#ffffff', label: 'Weiß'},
-                    ].map(c => (
-                        <button key={c.color} className="btn btn-sm" style={{borderColor: c.color}}
-                            onClick={() => {
-                                const [r,g,b] = [parseInt(c.color.slice(1,3),16), parseInt(c.color.slice(3,5),16), parseInt(c.color.slice(5,7),16)];
-                                devices.forEach(d => API.post(`/api/devices/${d.id}/color`, {color: [r,g,b]}));
-                            }}>
-                            <span style={{width: 10, height: 10, borderRadius: 2, background: c.color, display: 'inline-block', marginRight: 4}}></span>
-                            {c.label}
-                        </button>
+                        { value: `${onlineDevices.length}`, unit: onlineDevices.length === 1 ? 'Gerät' : 'Geräte', active: onlineDevices.length > 0 },
+                        { value: totalLeds, unit: 'LEDs', active: totalLeds > 0 },
+                        { value: runningModules.length, unit: `/ ${modules.length}`, active: runningModules.length > 0 },
+                    ].map((s, i) => (
+                        <div key={i} style={{textAlign: 'center', minWidth: 50}}>
+                            <div style={{fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: s.active ? 'var(--text)' : 'var(--text-dim)'}}>
+                                {s.value}
+                            </div>
+                            <div style={{fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: 1}}>{s.unit}</div>
+                        </div>
                     ))}
                 </div>
             </div>
+
+            {/* ═══ Quick Action Cards ═══ */}
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginBottom: 20}}>
+
+                {/* LED Quick Control */}
+                <div className="card" style={{padding: 16}}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12}}>
+                        <span style={{fontSize: 20}}>💡</span>
+                        <span style={{fontWeight: 700, fontSize: 14}}>LED Schnellsteuerung</span>
+                    </div>
+                    <div style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                        <button className="btn btn-sm" style={{background: 'var(--success)', color: '#000', border: 'none', fontWeight: 600}}
+                            onClick={() => API.post('/api/devices/all/state', {on: true})}>An</button>
+                        <button className="btn btn-sm" style={{background: 'var(--danger)', color: '#fff', border: 'none', fontWeight: 600}}
+                            onClick={() => API.post('/api/devices/all/state', {on: false})}>Aus</button>
+                        {[
+                            {hex: '#ff0000', label: 'Rot'},
+                            {hex: '#00ff00', label: 'Grün'},
+                            {hex: '#0055ff', label: 'Blau'},
+                            {hex: '#ffffff', label: 'Weiß'},
+                            {hex: '#8b5cf6', label: 'Lila'},
+                            {hex: '#ff8800', label: 'Orange'},
+                        ].map(c => (
+                            <button key={c.hex} className="btn btn-sm" style={{padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4}}
+                                onClick={() => {
+                                    const [r,g,b] = [parseInt(c.hex.slice(1,3),16), parseInt(c.hex.slice(3,5),16), parseInt(c.hex.slice(5,7),16)];
+                                    devices.forEach(d => API.post(`/api/devices/${d.id}/color`, {color: [r,g,b]}));
+                                }}>
+                                <span style={{width: 10, height: 10, borderRadius: 3, background: c.hex, display: 'inline-block', border: '1px solid rgba(255,255,255,0.2)'}} />
+                                <span style={{fontSize: 11}}>{c.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Active Player */}
+                <div className="card" style={{padding: 16, cursor: 'pointer'}} onClick={() => window.__setPage && window.__setPage('players')}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12}}>
+                        <span style={{fontSize: 20}}>🎭</span>
+                        <span style={{fontWeight: 700, fontSize: 14}}>Aktiver Spieler</span>
+                    </div>
+                    {activePlayer ? (
+                        <div style={{display: 'flex', alignItems: 'center', gap: 10}}>
+                            <span style={{fontSize: 32}}>{activePlayer.avatar}</span>
+                            <div>
+                                <div style={{fontWeight: 700}}>{activePlayer.name}</div>
+                                <div style={{fontSize: 12, color: 'var(--text-dim)'}}>
+                                    Avg {activePlayer.stats?.avg_score || '—'} · 180s: {activePlayer.stats?.total_180s || 0}
+                                </div>
+                            </div>
+                            <div style={{marginLeft: 'auto', width: 18, height: 18, borderRadius: '50%', background: activePlayer.led_color || '#8b5cf6', border: '2px solid var(--border)'}} />
+                        </div>
+                    ) : (
+                        <div style={{color: 'var(--text-dim)', fontSize: 13}}>
+                            {profiles.length > 0 ? `${profiles.length} Profile verfügbar` : 'Kein Profil erstellt'}
+                        </div>
+                    )}
+                </div>
+
+                {/* Autodarts Status */}
+                <div className="card" style={{padding: 16}}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12}}>
+                        <span style={{fontSize: 20}}>🎯</span>
+                        <span style={{fontWeight: 700, fontSize: 14}}>Autodarts</span>
+                        <span style={{
+                            marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%',
+                            background: autodartsConnected ? 'var(--success)' : 'var(--danger)',
+                        }} />
+                    </div>
+                    <div style={{fontSize: 13, color: autodartsConnected ? 'var(--success)' : 'var(--text-dim)'}}>
+                        {autodartsConnected ? 'Verbunden — Bereit' : 'Nicht verbunden'}
+                    </div>
+                    {!autodartsConnected && (
+                        <button className="btn btn-sm" style={{marginTop: 8, fontSize: 11}}
+                            onClick={() => window.__setPage && window.__setPage('autodarts')}>
+                            Verbinden →
+                        </button>
+                    )}
+                </div>
+
+                {/* Devices Overview */}
+                <div className="card" style={{padding: 16, cursor: 'pointer'}} onClick={() => window.__setPage && window.__setPage('devices')}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12}}>
+                        <span style={{fontSize: 20}}>⬡</span>
+                        <span style={{fontWeight: 700, fontSize: 14}}>WLED-Geräte</span>
+                    </div>
+                    {onlineDevices.length > 0 ? (
+                        <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+                            {devices.slice(0, 3).map(d => (
+                                <div key={d.id} style={{display: 'flex', alignItems: 'center', gap: 6, fontSize: 12}}>
+                                    <span style={{width: 6, height: 6, borderRadius: '50%', background: d.online ? 'var(--success)' : 'var(--danger)'}} />
+                                    <span style={{flex: 1, color: d.online ? 'var(--text)' : 'var(--text-dim)'}}>{d.name || d.ip}</span>
+                                    <span style={{color: 'var(--text-dim)', fontSize: 11}}>{d.led_count || '?'} LEDs</span>
+                                </div>
+                            ))}
+                            {devices.length > 3 && <span style={{fontSize: 11, color: 'var(--text-dim)'}}>+{devices.length - 3} weitere</span>}
+                        </div>
+                    ) : (
+                        <div style={{fontSize: 13, color: 'var(--text-dim)'}}>Keine Geräte gefunden</div>
+                    )}
+                </div>
+            </div>
+
+            {/* ═══ Module Control (compact) ═══ */}
+            <div className="card" style={{padding: 16, marginBottom: 16}}>
+                <div style={{fontWeight: 700, fontSize: 14, marginBottom: 12}}>⚙ Module</div>
+                <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8}}>
+                    {modules.filter(m => m.can_toggle).map(m => (
+                        <div key={m.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                            borderRadius: 8, background: m.running ? 'rgba(34,197,94,0.08)' : 'var(--bg)',
+                            border: `1px solid ${m.running ? 'rgba(34,197,94,0.25)' : 'var(--border)'}`,
+                        }}>
+                            <span style={{fontSize: 16}}>{m.icon}</span>
+                            <div style={{flex: 1, minWidth: 0}}>
+                                <div style={{fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>{m.name}</div>
+                            </div>
+                            <button
+                                className={`btn btn-sm ${m.running ? '' : ''}`}
+                                style={{
+                                    fontSize: 10, padding: '3px 10px', minWidth: 50,
+                                    background: m.running ? 'var(--success)' : 'transparent',
+                                    color: m.running ? '#000' : 'var(--text-dim)',
+                                    border: m.running ? 'none' : '1px solid var(--border)',
+                                    fontWeight: 700,
+                                }}
+                                disabled={toggling === m.id}
+                                onClick={() => toggle(m.id)}>
+                                {toggling === m.id ? '...' : m.running ? 'AN' : 'AUS'}
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* ═══ Leaderboard Teaser ═══ */}
+            {profiles.length > 1 && (
+                <div className="card" style={{padding: 16, cursor: 'pointer'}} onClick={() => window.__setPage && window.__setPage('stats')}>
+                    <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10}}>
+                        <span style={{fontSize: 16}}>🏆</span>
+                        <span style={{fontWeight: 700, fontSize: 14}}>Leaderboard</span>
+                        <span style={{marginLeft: 'auto', fontSize: 11, color: 'var(--accent)'}}>Details →</span>
+                    </div>
+                    <div style={{display: 'flex', gap: 12}}>
+                        {[...profiles].sort((a, b) => (b.stats?.avg_score || 0) - (a.stats?.avg_score || 0)).slice(0, 3).map((p, i) => (
+                            <div key={p.id} style={{flex: 1, textAlign: 'center', padding: '8px 0'}}>
+                                <div style={{fontSize: 10, marginBottom: 2}}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</div>
+                                <div style={{fontSize: 22}}>{p.avatar}</div>
+                                <div style={{fontSize: 12, fontWeight: 600, marginTop: 2}}>{p.name}</div>
+                                <div style={{fontSize: 18, fontWeight: 700, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums'}}>{p.stats?.avg_score || '—'}</div>
+                                <div style={{fontSize: 10, color: 'var(--text-dim)'}}>Avg Score</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -7681,6 +7811,7 @@ function CallerPage() {
 
 function App() {
     const [activePage, setActivePage] = useState('dashboard');
+    window.__setPage = setActivePage;
     const [devices, setDevices] = useState([]);
     const [autodartsConnected, setAutodartsConnected] = useState(false);
     const [boardCount, setBoardCount] = useState(0);
