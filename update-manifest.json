@@ -1,14 +1,14 @@
 {
-    "version": "2.4.7",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-v2.4.7.zip",
+    "version": "2.4.8",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-v2.4.8.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-v2.4.7.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-v2.4.8.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-macos-arm64"
     },
-    "changelog": "- v2.4.7 - Fix: Multi-Board Online Turn-Erkennung",
-    "size": 4581632,
+    "changelog": "- Fix: WLED Persistent Session statt neue pro Request\n- Fix: Timeout 5s→3s, weniger ESP-Überlastung\n- Fix: Log-Spam bei offline Geräten unterdrückt\n- Fix: Session-Cleanup bei Shutdown",
+    "size": 0,
     "min_python": "3.8",
     "released": "2026-02-20"
 }

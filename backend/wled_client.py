@@ -2,7 +2,7 @@
 WLED Client - HTTP/JSON API communication with WLED devices.
 Supports WLED API v1 (JSON) for controlling LED strips.
 """
-MODULE_VERSION = "1.2.0"
+MODULE_VERSION = "1.3.0"
 
 import asyncio
 import logging
@@ -57,30 +57,60 @@ class WLEDClient:
         "Red Shift", "Red Tide", "Candy2"
     ]
 
-    def __init__(self, ip: str, timeout: float = 5.0):
+    def __init__(self, ip: str, timeout: float = 3.0):
         self.ip = ip
         self.base_url = f"http://{ip}"
         self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._consecutive_fails: int = 0
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create a persistent session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=self.timeout,
+                connector=aiohttp.TCPConnector(limit=2, force_close=False),
+            )
+        return self._session
+
+    async def close(self):
+        """Close the persistent session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    def _log_fail(self, method: str, path: str, error):
+        """Log failures, suppressing spam for offline devices."""
+        self._consecutive_fails += 1
+        if self._consecutive_fails <= 3 or self._consecutive_fails % 30 == 0:
+            logger.warning(f"{method} {self.ip}{path} failed: {error}")
+            if self._consecutive_fails == 3:
+                logger.warning(f"WLED {self.ip} scheint offline — reduziere Logging")
 
     async def _get(self, path: str) -> Optional[dict]:
         """Make a GET request to the WLED API."""
         try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(f"{self.base_url}{path}") as resp:
-                    if resp.status == 200:
-                        return await resp.json()
+            session = await self._get_session()
+            async with session.get(f"{self.base_url}{path}") as resp:
+                if resp.status == 200:
+                    self._consecutive_fails = 0
+                    return await resp.json()
         except Exception as e:
-            logger.warning(f"GET {self.ip}{path} failed: {e}")
+            self._log_fail("GET", path, e)
+            await self.close()
         return None
 
     async def _post(self, path: str, data: dict) -> bool:
         """Make a POST request to the WLED API."""
         try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.post(f"{self.base_url}{path}", json=data) as resp:
-                    return resp.status == 200
+            session = await self._get_session()
+            async with session.post(f"{self.base_url}{path}", json=data) as resp:
+                if resp.status == 200:
+                    self._consecutive_fails = 0
+                    return True
         except Exception as e:
-            logger.warning(f"POST {self.ip}{path} failed: {e}")
+            self._log_fail("POST", path, e)
+            await self.close()
         return False
 
     async def is_online(self) -> bool:

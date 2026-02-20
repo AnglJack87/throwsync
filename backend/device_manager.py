@@ -45,6 +45,12 @@ class DeviceManager:
                 await self._poll_task
             except asyncio.CancelledError:
                 pass
+        # Close all WLED sessions
+        for client in self.clients.values():
+            try:
+                await client.close()
+            except Exception:
+                pass
 
     async def _poll_status(self):
         """Periodically poll device status."""
