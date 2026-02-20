@@ -261,7 +261,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.2.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.2.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1956,6 +1956,85 @@ async def save_music_config(data: dict):
 
 
 # ─── Player Profiles ─────────────────────────────────────────────────────────
+
+async def auto_activate_player_by_name(autodarts_name: str):
+    """Auto-activate a ThrowSync player profile matching the Autodarts player name.
+    Matching rules (in priority order):
+    1. Exact match (case-insensitive)
+    2. ThrowSync name is contained in Autodarts name (case-insensitive)
+    3. Autodarts name is contained in ThrowSync name (case-insensitive)
+    """
+    if not autodarts_name:
+        return
+    profiles = config_manager.get("player_profiles", [])
+    if not profiles:
+        return
+    
+    ad_lower = autodarts_name.lower().strip()
+    active_id = config_manager.get("active_player", "")
+    matched = None
+    
+    # 1. Exact match
+    for p in profiles:
+        if p.get("name", "").lower().strip() == ad_lower:
+            matched = p
+            break
+    
+    # 2. ThrowSync name contained in Autodarts name
+    if not matched:
+        for p in profiles:
+            ts_name = p.get("name", "").lower().strip()
+            if ts_name and ts_name in ad_lower:
+                matched = p
+                break
+    
+    # 3. Autodarts name contained in ThrowSync name
+    if not matched:
+        for p in profiles:
+            ts_name = p.get("name", "").lower().strip()
+            if ts_name and ad_lower in ts_name:
+                matched = p
+                break
+    
+    if not matched:
+        logger.info(f"Auto-Profil: Kein ThrowSync-Profil für '{autodarts_name}' gefunden")
+        return
+    
+    # Skip if already active
+    if matched.get("id") == active_id:
+        logger.debug(f"Auto-Profil: '{matched.get('name')}' ist bereits aktiv")
+        return
+    
+    logger.info(f"Auto-Profil: '{autodarts_name}' → ThrowSync-Profil '{matched.get('name')}' aktiviert!")
+    config_manager.set("active_player", matched["id"])
+    config_manager.save()
+    
+    # Broadcast activation
+    await broadcast_ws({
+        "type": "player_activated",
+        "profile": matched,
+        "auto": True,
+    })
+    
+    # Walk-on sound
+    if matched.get("walk_on_sound"):
+        await broadcast_ws({
+            "type": "caller_play",
+            "sounds": [{"key": "walk_on", "sound": matched["walk_on_sound"], "volume": 1.0, "priority": 2}],
+            "event": "walk_on",
+            "volume": config_manager.get("caller_config", {}).get("volume", 0.8),
+            "priority": 2,
+        })
+    
+    # LED theme
+    if matched.get("led_color"):
+        await broadcast_ws({
+            "type": "player_led_theme",
+            "color": matched["led_color"],
+            "brightness": matched.get("led_brightness", 180),
+            "effect": matched.get("led_effect", 0),
+        })
+
 
 @app.get("/api/profiles/players")
 async def get_player_profiles():

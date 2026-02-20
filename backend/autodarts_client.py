@@ -67,6 +67,8 @@ class AutodartsBoardConnection:
         self._last_scores: Optional[list] = None
         self._my_player_index: int = -1     # Which player index is "me" (board owner)
         self._is_local_match: bool = True   # Local = all players same board, no opponent_turn
+        self._match_player_names: list = [] # Player names from Autodarts match data
+        self._last_activated_player: str = ""  # Last auto-activated profile name
 
     async def _get_keycloak_token(self) -> bool:
         """Authenticate with Autodarts Keycloak and get access token."""
@@ -394,6 +396,8 @@ class AutodartsBoardConnection:
                 self._score_announced = False
                 self._my_player_index = -1
                 self._is_local_match = True  # Assume local until proven online
+                self._match_player_names = []
+                self._last_activated_player = ""
                 
                 # Log full match data for debugging
                 logger.info(f"Board '{self.name}' MATCH DATA: {json.dumps(inner)[:800]}")
@@ -404,13 +408,22 @@ class AutodartsBoardConnection:
                 if isinstance(players, list) and len(players) > 0:
                     for idx, p in enumerate(players):
                         if isinstance(p, dict):
+                            # Extract player name (try multiple field names)
+                            p_name = (p.get("name") or p.get("displayName") or 
+                                     p.get("username") or p.get("userId") or f"Player {idx+1}")
+                            self._match_player_names.append(p_name)
+                            
                             p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
                             if p_board:
                                 board_ids_in_match.add(p_board)
                                 if p_board == self.board_id:
                                     self._my_player_index = idx
                                     logger.info(f"Board '{self.name}': Spieler aus Match-Daten erkannt -> Player #{idx} (boardId match)")
+                        elif isinstance(p, str):
+                            # Sometimes players is just a list of names
+                            self._match_player_names.append(p)
                     
+                    logger.info(f"Board '{self.name}': Match-Spieler: {self._match_player_names}")
                     # Determine local vs online:
                     # Online = multiple different board IDs in the match
                     # Local = all players on same board (or no board IDs at all)
@@ -478,13 +491,19 @@ class AutodartsBoardConnection:
             return
         
         # ── Try to detect player from state data if still unknown ──
-        if self._my_player_index < 0:
+        if self._my_player_index < 0 or not self._match_player_names:
             players = state.get("players", state.get("participants", []))
             if isinstance(players, list):
                 for idx, p in enumerate(players):
                     if isinstance(p, dict):
+                        # Extract names if we don't have them yet
+                        if idx >= len(self._match_player_names):
+                            p_name = (p.get("name") or p.get("displayName") or 
+                                     p.get("username") or p.get("userId") or f"Player {idx+1}")
+                            self._match_player_names.append(p_name)
+                        
                         p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
-                        if p_board and p_board == self.board_id:
+                        if p_board and p_board == self.board_id and self._my_player_index < 0:
                             self._my_player_index = idx
                             logger.info(f"Board '{self.name}': ★ Spieler aus State-Daten erkannt → Player #{idx}")
                             break
@@ -558,21 +577,26 @@ class AutodartsBoardConnection:
                     logger.debug(f"Board '{self.name}' STATE: Player {prev}: "
                                 f"{old_score} → {new_score} (diff={old_score - new_score})")
         
-        # ── Detect player change → Turn indicator ──
+        # ── Detect player change → Turn indicator + Auto-Profile ──
         if player_index >= 0 and player_index != self._last_player_index:
+            # Get active player name from match data
+            active_player_name = ""
+            if player_index < len(self._match_player_names):
+                active_player_name = self._match_player_names[player_index]
+            
             if self._last_player_index >= 0:
                 logger.info(f"Board '{self.name}' STATE: Spielerwechsel {self._last_player_index} → {player_index} "
-                           f"(local={self._is_local_match}, my={self._my_player_index})")
+                           f"('{active_player_name}', local={self._is_local_match}, my={self._my_player_index})")
                 
                 if self._is_local_match:
                     # LOCAL: Both players are at THIS board → always my_turn (green)
-                    logger.info(f"Board '{self.name}': LOKAL → Spieler {player_index} ist dran → my_turn")
                     await self._trigger_event("my_turn")
                     await self._broadcast_display_state({
                         "type": "turn_update",
                         "is_my_turn": True,
                         "is_local": True,
                         "active_player_index": player_index,
+                        "active_player_name": active_player_name,
                     })
                 elif self._my_player_index >= 0:
                     # ONLINE: Distinguish my turn vs opponent
@@ -589,6 +613,7 @@ class AutodartsBoardConnection:
                         "is_local": False,
                         "my_player_index": self._my_player_index,
                         "active_player_index": player_index,
+                        "active_player_name": active_player_name,
                     })
                 else:
                     # Player index not yet known
@@ -596,7 +621,17 @@ class AutodartsBoardConnection:
                         "type": "turn_update",
                         "is_my_turn": None,
                         "active_player_index": player_index,
+                        "active_player_name": active_player_name,
                     })
+            
+            # ── Auto-activate matching player profile ──
+            if active_player_name and active_player_name != self._last_activated_player:
+                self._last_activated_player = active_player_name
+                try:
+                    from main import auto_activate_player_by_name
+                    await auto_activate_player_by_name(active_player_name)
+                except Exception as e:
+                    logger.debug(f"Board '{self.name}': Auto-Profil Aktivierung: {e}")
             
             self._last_player_index = player_index
         
