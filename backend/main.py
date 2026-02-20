@@ -261,7 +261,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.2.1", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.2.2", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1957,12 +1957,16 @@ async def save_music_config(data: dict):
 
 # ─── Player Profiles ─────────────────────────────────────────────────────────
 
-async def auto_activate_player_by_name(autodarts_name: str):
+async def auto_activate_player_by_name(autodarts_name: str, play_walk_on: bool = False):
     """Auto-activate a ThrowSync player profile matching the Autodarts player name.
     Matching rules (in priority order):
     1. Exact match (case-insensitive)
     2. ThrowSync name is contained in Autodarts name (case-insensitive)
     3. Autodarts name is contained in ThrowSync name (case-insensitive)
+    
+    Args:
+        autodarts_name: Player name from Autodarts
+        play_walk_on: Only True at match start, False during normal turn changes
     """
     if not autodarts_name:
         return
@@ -2016,8 +2020,8 @@ async def auto_activate_player_by_name(autodarts_name: str):
         "auto": True,
     })
     
-    # Walk-on sound
-    if matched.get("walk_on_sound"):
+    # Walk-on sound — only at match start
+    if play_walk_on and matched.get("walk_on_sound"):
         await broadcast_ws({
             "type": "caller_play",
             "sounds": [{"key": "walk_on", "sound": matched["walk_on_sound"], "volume": 1.0, "priority": 2}],

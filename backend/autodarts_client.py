@@ -455,6 +455,16 @@ class AutodartsBoardConnection:
                     logger.info(f"Board '{self.name}' TRIGGER: match-start -> {events}")
                     await self._dispatch_events("game-started", events)
                 await self._broadcast_caller("game_on")
+                
+                # Auto-activate first player with walk-on sound
+                if self._match_player_names:
+                    first_player = self._match_player_names[0]
+                    self._last_activated_player = first_player
+                    try:
+                        from main import auto_activate_player_by_name
+                        await auto_activate_player_by_name(first_player, play_walk_on=True)
+                    except Exception as e:
+                        logger.debug(f"Board '{self.name}': Walk-On Aktivierung: {e}")
             elif event_type == "finish" and match_id:
                 logger.info(f"Board '{self.name}': Match beendet ({match_id[:12]}...)")
                 events = self._map_events("match-won", inner)
