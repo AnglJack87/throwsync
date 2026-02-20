@@ -261,7 +261,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.2.2", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1951,6 +1951,170 @@ async def get_music_config():
 async def save_music_config(data: dict):
     """Save music player configuration."""
     config_manager.set("music_config", data)
+    config_manager.save()
+    return {"success": True}
+
+
+# ─── Spotify Integration ─────────────────────────────────────────────────────
+
+@app.get("/api/spotify/config")
+async def get_spotify_config():
+    """Get Spotify config (tokens masked)."""
+    from spotify import DEFAULT_SPOTIFY_CONFIG
+    cfg = config_manager.get("spotify_config", DEFAULT_SPOTIFY_CONFIG)
+    return {
+        "enabled": cfg.get("enabled", False),
+        "client_id": cfg.get("client_id", ""),
+        "connected": bool(cfg.get("access_token")),
+        "duck_on_event": cfg.get("duck_on_event", True),
+        "duck_level": cfg.get("duck_level", 20),
+        "restore_level": cfg.get("restore_level", 60),
+    }
+
+
+@app.post("/api/spotify/config")
+async def save_spotify_config(data: dict):
+    """Save Spotify config."""
+    from spotify import DEFAULT_SPOTIFY_CONFIG
+    cfg = config_manager.get("spotify_config", DEFAULT_SPOTIFY_CONFIG)
+    for key in ("enabled", "client_id", "duck_on_event", "duck_level", "restore_level"):
+        if key in data:
+            cfg[key] = data[key]
+    config_manager.set("spotify_config", cfg)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.get("/api/spotify/auth-url")
+async def get_spotify_auth_url(request: Request):
+    """Generate Spotify OAuth authorization URL."""
+    from spotify import get_auth_url
+    cfg = config_manager.get("spotify_config", {})
+    client_id = cfg.get("client_id", "")
+    if not client_id:
+        raise HTTPException(400, "Spotify Client ID nicht konfiguriert")
+    redirect_uri = str(request.base_url).rstrip('/') + "/api/spotify/callback"
+    cfg["redirect_uri"] = redirect_uri
+    config_manager.set("spotify_config", cfg)
+    config_manager.save()
+    url = get_auth_url(client_id, redirect_uri)
+    return {"url": url}
+
+
+@app.get("/api/spotify/callback")
+async def spotify_callback(code: str = "", state: str = "", error: str = ""):
+    """Handle Spotify OAuth callback."""
+    if error:
+        return HTMLResponse(f"<html><body><h2>Spotify Fehler: {error}</h2><script>window.close()</script></body></html>")
+    from spotify import exchange_code, _state
+    import time
+    if state != _state:
+        return HTMLResponse("<html><body><h2>Ungültiger State</h2><script>window.close()</script></body></html>")
+    cfg = config_manager.get("spotify_config", {})
+    result = await exchange_code(cfg.get("client_id", ""), code, cfg.get("redirect_uri", ""))
+    if "error" in result:
+        return HTMLResponse(f"<html><body><h2>Fehler: {result['error']}</h2><script>window.close()</script></body></html>")
+    cfg["access_token"] = result["access_token"]
+    cfg["refresh_token"] = result["refresh_token"]
+    cfg["token_expires_at"] = time.time() + result.get("expires_in", 3600)
+    config_manager.set("spotify_config", cfg)
+    config_manager.save()
+    logger.info("Spotify: Erfolgreich verbunden!")
+    return HTMLResponse("""<html><body style="background:#0a0a0f;color:#e2e2e8;font-family:system-ui;
+        display:flex;align-items:center;justify-content:center;height:100vh">
+        <div style="text-align:center">
+            <div style="font-size:64px;margin-bottom:16px">🎵</div>
+            <h2>Spotify verbunden!</h2>
+            <p style="color:#888">Du kannst dieses Fenster schließen.</p>
+            <script>setTimeout(()=>window.close(),2000)</script>
+        </div></body></html>""")
+
+
+@app.get("/api/spotify/playback")
+async def get_spotify_playback():
+    """Get current Spotify playback state."""
+    from spotify import get_valid_token, spotify_api
+    token = await get_valid_token(config_manager)
+    if not token:
+        return {"playing": False, "connected": False}
+    result = await spotify_api("GET", "/me/player", token)
+    if "error" in result:
+        return {"playing": False, "connected": False}
+    item = result.get("item", {})
+    return {
+        "connected": True,
+        "playing": result.get("is_playing", False),
+        "track": item.get("name", ""),
+        "artist": ", ".join(a.get("name", "") for a in item.get("artists", [])),
+        "album": item.get("album", {}).get("name", ""),
+        "album_art": (item.get("album", {}).get("images", [{}])[0].get("url", "") if item.get("album", {}).get("images") else ""),
+        "progress_ms": result.get("progress_ms", 0),
+        "duration_ms": item.get("duration_ms", 0),
+        "volume": result.get("device", {}).get("volume_percent", 50),
+        "device": result.get("device", {}).get("name", ""),
+        "shuffle": result.get("shuffle_state", False),
+        "repeat": result.get("repeat_state", "off"),
+    }
+
+
+@app.put("/api/spotify/play")
+async def spotify_play():
+    from spotify import get_valid_token, spotify_api
+    token = await get_valid_token(config_manager)
+    if not token: raise HTTPException(401, "Nicht verbunden")
+    return await spotify_api("PUT", "/me/player/play", token)
+
+
+@app.put("/api/spotify/pause")
+async def spotify_pause():
+    from spotify import get_valid_token, spotify_api
+    token = await get_valid_token(config_manager)
+    if not token: raise HTTPException(401, "Nicht verbunden")
+    return await spotify_api("PUT", "/me/player/pause", token)
+
+
+@app.post("/api/spotify/next")
+async def spotify_next():
+    from spotify import get_valid_token, spotify_api
+    token = await get_valid_token(config_manager)
+    if not token: raise HTTPException(401, "Nicht verbunden")
+    return await spotify_api("POST", "/me/player/next", token)
+
+
+@app.post("/api/spotify/prev")
+async def spotify_prev():
+    from spotify import get_valid_token, spotify_api
+    token = await get_valid_token(config_manager)
+    if not token: raise HTTPException(401, "Nicht verbunden")
+    return await spotify_api("POST", "/me/player/previous", token)
+
+
+@app.put("/api/spotify/volume/{level}")
+async def spotify_volume(level: int):
+    from spotify import get_valid_token, spotify_api
+    token = await get_valid_token(config_manager)
+    if not token: raise HTTPException(401, "Nicht verbunden")
+    return await spotify_api("PUT", f"/me/player/volume?volume_percent={max(0,min(100,level))}", token)
+
+
+@app.put("/api/spotify/shuffle/{state}")
+async def spotify_shuffle(state: bool):
+    from spotify import get_valid_token, spotify_api
+    token = await get_valid_token(config_manager)
+    if not token: raise HTTPException(401, "Nicht verbunden")
+    s = "true" if state else "false"
+    return await spotify_api("PUT", f"/me/player/shuffle?state={s}", token)
+
+
+@app.post("/api/spotify/disconnect")
+async def spotify_disconnect():
+    """Remove Spotify tokens."""
+    from spotify import DEFAULT_SPOTIFY_CONFIG
+    cfg = config_manager.get("spotify_config", DEFAULT_SPOTIFY_CONFIG)
+    cfg["access_token"] = ""
+    cfg["refresh_token"] = ""
+    cfg["token_expires_at"] = 0
+    config_manager.set("spotify_config", cfg)
     config_manager.save()
     return {"success": True}
 

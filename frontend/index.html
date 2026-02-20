@@ -543,6 +543,30 @@
 
         @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
 
+        /* Mini Player */
+        .mini-player {
+            position: fixed; bottom: 0; left: 220px; right: 0;
+            height: 56px; background: rgba(18,18,26,0.97);
+            border-top: 1px solid var(--border);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            display: flex; align-items: center; gap: 12px; padding: 0 16px;
+            z-index: 150; transition: transform 0.3s ease;
+        }
+        .mini-player.hidden { transform: translateY(100%); }
+        .mini-player .mp-art { width: 40px; height: 40px; border-radius: 6px; background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+        .mini-player .mp-art img { width: 100%; height: 100%; border-radius: 6px; object-fit: cover; }
+        .mini-player .mp-info { flex: 1; min-width: 0; }
+        .mini-player .mp-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mini-player .mp-artist { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mini-player .mp-controls { display: flex; align-items: center; gap: 4px; }
+        .mini-player .mp-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 16px; padding: 4px 6px; border-radius: 4px; transition: color 0.15s; }
+        .mini-player .mp-btn:hover { color: var(--text-primary); }
+        .mini-player .mp-btn.play { font-size: 22px; color: var(--accent); }
+        .mini-player .mp-vol { width: 80px; accent-color: var(--accent); }
+        .mini-player .mp-src { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; letter-spacing: 0.5px; }
+        .mini-player .mp-src.local { background: rgba(139,92,246,0.2); color: #a78bfa; }
+        .mini-player .mp-src.spotify { background: rgba(30,215,96,0.2); color: #1ed760; }
+
         /* Responsive */
         @media (max-width: 1200px) {
             .grid-3 { grid-template-columns: 1fr 1fr; }
@@ -569,8 +593,11 @@
             .sidebar .nav-item span:last-child { font-size: 9px; line-height: 1.1; }
             .sidebar .nav-item.active { background: var(--accent); }
             .main-content {
-                margin-left: 0; padding: 12px 12px 80px 12px;
+                margin-left: 0; padding: 12px 12px 136px 12px;
             }
+            .mini-player { left: 0; bottom: 58px; height: 48px; padding: 0 10px; gap: 8px; }
+            .mini-player .mp-vol { display: none; }
+            .mini-player .mp-src { display: none; }
             .grid-2, .grid-3 { grid-template-columns: 1fr; }
             .grid-4 { grid-template-columns: repeat(2, 1fr); }
             .page-header h2 { font-size: 22px; }
@@ -825,6 +852,201 @@ function useWebSocket() {
     }, []);
 
     return { ws, lastMessage };
+}
+
+
+// ─── Global Music Context ───────────────────────────────────────────────────
+
+const MusicContext = React.createContext(null);
+
+function MusicProvider({ children }) {
+    const [musicFiles, setMusicFiles] = useState([]);
+    const [playlist, setPlaylist] = useState([]);
+    const [currentTrack, setCurrentTrack] = useState(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [volume, setVolume] = useState(0.3);
+    const [shuffle, setShuffle] = useState(false);
+    const [repeat, setRepeat] = useState(false);
+    const [duckOnEvent, setDuckOnEvent] = useState(true);
+    const [duckLevel, setDuckLevel] = useState(0.1);
+    const audioRef = useRef(null);
+    // Spotify state
+    const [spotifyState, setSpotifyState] = useState({ connected: false, playing: false, track: '', artist: '', album_art: '' });
+    const [source, setSource] = useState('local'); // 'local' | 'spotify'
+    const spotifyPollRef = useRef(null);
+
+    // Load config + files on mount
+    useEffect(() => {
+        API.get('/api/music/files').then(d => setMusicFiles(d?.files || []));
+        API.get('/api/music/config').then(d => {
+            if (d) {
+                setVolume(d.volume ?? 0.3);
+                setShuffle(d.shuffle ?? false);
+                setRepeat(d.repeat ?? false);
+                setDuckOnEvent(d.duck_on_event ?? true);
+                setDuckLevel(d.duck_level ?? 0.1);
+                setPlaylist(d.playlist || []);
+            }
+        });
+        // Check Spotify connection
+        API.get('/api/spotify/config').then(d => {
+            if (d?.connected) {
+                setSource('spotify');
+                pollSpotify();
+            }
+        });
+    }, []);
+
+    const saveConfig = (updates = {}) => {
+        const cfg = { volume, shuffle, repeat, duck_on_event: duckOnEvent, duck_level: duckLevel, playlist, ...updates };
+        API.post('/api/music/config', cfg);
+    };
+
+    // ── Local playback ──
+    const playTrack = (filename) => {
+        if (audioRef.current) audioRef.current.pause();
+        setSource('local');
+        const audio = new Audio('/music/' + filename);
+        audio.volume = volume;
+        audio.onended = () => playNext(filename);
+        audio.play().catch(() => {});
+        audioRef.current = audio;
+        setCurrentTrack(filename);
+        setIsPlaying(true);
+    };
+
+    const playNext = (currentFile) => {
+        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+        if (list.length === 0) return;
+        const idx = list.indexOf(currentFile);
+        let nextIdx;
+        if (shuffle) {
+            nextIdx = Math.floor(Math.random() * list.length);
+        } else {
+            nextIdx = idx + 1;
+            if (nextIdx >= list.length) {
+                if (repeat) nextIdx = 0;
+                else { setIsPlaying(false); setCurrentTrack(null); return; }
+            }
+        }
+        playTrack(list[nextIdx]);
+    };
+
+    const togglePlay = () => {
+        if (source === 'spotify') {
+            if (spotifyState.playing) API.put('/api/spotify/pause').then(pollSpotify);
+            else API.put('/api/spotify/play').then(pollSpotify);
+            return;
+        }
+        if (!audioRef.current && musicFiles.length > 0) {
+            const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+            playTrack(list[0]);
+            return;
+        }
+        if (audioRef.current) {
+            if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+            else { audioRef.current.play(); setIsPlaying(true); }
+        }
+    };
+
+    const skipNext = () => {
+        if (source === 'spotify') { API.post('/api/spotify/next').then(() => setTimeout(pollSpotify, 300)); return; }
+        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+        playNext(currentTrack || list[0]);
+    };
+
+    const skipPrev = () => {
+        if (source === 'spotify') { API.post('/api/spotify/prev').then(() => setTimeout(pollSpotify, 300)); return; }
+        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
+        const idx = list.indexOf(currentTrack);
+        const prevIdx = idx > 0 ? idx - 1 : list.length - 1;
+        playTrack(list[prevIdx]);
+    };
+
+    const changeVolume = (v) => {
+        setVolume(v);
+        if (source === 'spotify') { API.put('/api/spotify/volume/' + Math.round(v * 100)); return; }
+        if (audioRef.current) audioRef.current.volume = v;
+        saveConfig({ volume: v });
+    };
+
+    const stopLocal = () => {
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+        setIsPlaying(false); setCurrentTrack(null);
+    };
+
+    // ── Spotify polling ──
+    const pollSpotify = () => {
+        API.get('/api/spotify/playback').then(d => {
+            if (d) {
+                setSpotifyState(d);
+                if (d.connected && d.playing) {
+                    setIsPlaying(true);
+                    setCurrentTrack(d.track);
+                } else if (d.connected && !d.playing) {
+                    setIsPlaying(false);
+                }
+            }
+        });
+    };
+
+    // Poll Spotify every 3s when active
+    useEffect(() => {
+        if (source === 'spotify' && spotifyState.connected) {
+            spotifyPollRef.current = setInterval(pollSpotify, 3000);
+            return () => clearInterval(spotifyPollRef.current);
+        }
+    }, [source, spotifyState.connected]);
+
+    const value = {
+        musicFiles, setMusicFiles, playlist, setPlaylist,
+        currentTrack, isPlaying, volume, shuffle, repeat,
+        duckOnEvent, duckLevel, source, spotifyState,
+        setShuffle, setRepeat, setDuckOnEvent, setDuckLevel, setSource,
+        saveConfig, playTrack, playNext, togglePlay, skipNext, skipPrev,
+        changeVolume, stopLocal, pollSpotify, audioRef,
+    };
+
+    return React.createElement(MusicContext.Provider, { value }, children);
+}
+
+function useMusicPlayer() { return useContext(MusicContext); }
+
+
+// ─── Mini Player ────────────────────────────────────────────────────────────
+
+function MiniPlayer() {
+    const m = useMusicPlayer();
+    if (!m) return null;
+    const { currentTrack, isPlaying, volume, source, spotifyState, togglePlay, skipPrev, skipNext, changeVolume } = m;
+
+    // Hide if nothing is playing and never was
+    const hasContent = currentTrack || (spotifyState.connected && spotifyState.track);
+    if (!hasContent) return null;
+
+    const trackName = source === 'spotify' ? spotifyState.track : (currentTrack ? currentTrack.replace(/\.[^.]+$/, '') : '');
+    const artist = source === 'spotify' ? spotifyState.artist : '';
+    const albumArt = source === 'spotify' ? spotifyState.album_art : '';
+
+    return (
+        <div className="mini-player">
+            <div className="mp-art">
+                {albumArt ? <img src={albumArt} alt="" /> : (isPlaying ? '\uD83C\uDFB6' : '\uD83C\uDFB5')}
+            </div>
+            <div className="mp-info">
+                <div className="mp-title">{trackName || 'Kein Track'}</div>
+                {artist && <div className="mp-artist">{artist}</div>}
+            </div>
+            <div className="mp-controls">
+                <button className="mp-btn" onClick={skipPrev}>{'\u23EE'}</button>
+                <button className="mp-btn play" onClick={togglePlay}>{isPlaying ? '\u23F8' : '\u25B6'}</button>
+                <button className="mp-btn" onClick={skipNext}>{'\u23ED'}</button>
+            </div>
+            <input type="range" className="mp-vol" min="0" max="1" step="0.05" value={volume}
+                onChange={e => changeVolume(parseFloat(e.target.value))} />
+            <span className={'mp-src ' + source}>{source === 'spotify' ? 'SPOTIFY' : 'LOKAL'}</span>
+        </div>
+    );
 }
 
 
@@ -5815,38 +6037,16 @@ function AchievementsPage() {
 // ─── Music Player ────────────────────────────────────────────────────────────
 
 function MusicPage() {
-    const [musicFiles, setMusicFiles] = useState([]);
-    const [playlist, setPlaylist] = useState([]);
-    const [currentTrack, setCurrentTrack] = useState(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [volume, setVolume] = useState(0.3);
-    const [shuffle, setShuffle] = useState(false);
-    const [repeat, setRepeat] = useState(false);
-    const [duckOnEvent, setDuckOnEvent] = useState(true);
-    const [duckLevel, setDuckLevel] = useState(0.1);
+    const m = useMusicPlayer();
     const [uploading, setUploading] = useState(false);
-    const audioRef = useRef(null);
+    const [spotifyCfg, setSpotifyCfg] = useState({ enabled: false, client_id: '', connected: false });
     const toast = useToast();
     const { t } = useI18n();
 
     useEffect(() => {
-        API.get('/api/music/files').then(d => setMusicFiles(d?.files || []));
-        API.get('/api/music/config').then(d => {
-            if (d) {
-                setVolume(d.volume ?? 0.3);
-                setShuffle(d.shuffle ?? false);
-                setRepeat(d.repeat ?? false);
-                setDuckOnEvent(d.duck_on_event ?? true);
-                setDuckLevel(d.duck_level ?? 0.1);
-                setPlaylist(d.playlist || []);
-            }
-        });
+        API.get('/api/music/files').then(d => m.setMusicFiles(d?.files || []));
+        API.get('/api/spotify/config').then(d => { if (d) setSpotifyCfg(d); });
     }, []);
-
-    const saveConfig = (updates = {}) => {
-        const cfg = { volume, shuffle, repeat, duck_on_event: duckOnEvent, duck_level: duckLevel, playlist, ...updates };
-        API.post('/api/music/config', cfg);
-    };
 
     const uploadMusic = async (e) => {
         const files = e.target.files;
@@ -5858,240 +6058,270 @@ function MusicPage() {
             await fetch('/api/music/upload', { method: 'POST', body: fd });
         }
         setUploading(false);
-        API.get('/api/music/files').then(d => setMusicFiles(d?.files || []));
-        toast(`${files.length} Datei(en) hochgeladen`, 'success');
+        API.get('/api/music/files').then(d => m.setMusicFiles(d?.files || []));
+        toast(files.length + ' Datei(en) hochgeladen', 'success');
     };
 
     const deleteFile = async (filename) => {
-        await API.del(`/api/music/files/${encodeURIComponent(filename)}`);
-        setMusicFiles(f => f.filter(x => x.filename !== filename));
-        setPlaylist(p => p.filter(x => x !== filename));
+        await API.del('/api/music/files/' + encodeURIComponent(filename));
+        m.setMusicFiles(f => f.filter(x => x.filename !== filename));
+        m.setPlaylist(p => p.filter(x => x !== filename));
     };
 
     const addToPlaylist = (filename) => {
-        if (playlist.includes(filename)) return;
-        const next = [...playlist, filename];
-        setPlaylist(next);
-        saveConfig({ playlist: next });
+        if (m.playlist.includes(filename)) return;
+        const next = [...m.playlist, filename];
+        m.setPlaylist(next);
+        m.saveConfig({ playlist: next });
     };
 
     const removeFromPlaylist = (filename) => {
-        const next = playlist.filter(x => x !== filename);
-        setPlaylist(next);
-        saveConfig({ playlist: next });
+        const next = m.playlist.filter(x => x !== filename);
+        m.setPlaylist(next);
+        m.saveConfig({ playlist: next });
     };
-
-    const playTrack = (filename) => {
-        if (audioRef.current) {
-            audioRef.current.pause();
-        }
-        const audio = new Audio(`/music/${filename}`);
-        audio.volume = volume;
-        audio.onended = () => playNext(filename);
-        audio.play().catch(() => {});
-        audioRef.current = audio;
-        setCurrentTrack(filename);
-        setIsPlaying(true);
-    };
-
-    const playNext = (currentFile) => {
-        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
-        if (list.length === 0) return;
-        const idx = list.indexOf(currentFile);
-        let nextIdx;
-        if (shuffle) {
-            nextIdx = Math.floor(Math.random() * list.length);
-        } else {
-            nextIdx = idx + 1;
-            if (nextIdx >= list.length) {
-                if (repeat) nextIdx = 0;
-                else { setIsPlaying(false); setCurrentTrack(null); return; }
-            }
-        }
-        playTrack(list[nextIdx]);
-    };
-
-    const togglePlay = () => {
-        if (!audioRef.current && musicFiles.length > 0) {
-            const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
-            playTrack(list[0]);
-            return;
-        }
-        if (audioRef.current) {
-            if (isPlaying) {
-                audioRef.current.pause();
-                setIsPlaying(false);
-            } else {
-                audioRef.current.play();
-                setIsPlaying(true);
-            }
-        }
-    };
-
-    const skipNext = () => {
-        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
-        playNext(currentTrack || list[0]);
-    };
-
-    const skipPrev = () => {
-        const list = playlist.length > 0 ? playlist : musicFiles.map(f => f.filename);
-        const idx = list.indexOf(currentTrack);
-        const prevIdx = idx > 0 ? idx - 1 : list.length - 1;
-        playTrack(list[prevIdx]);
-    };
-
-    const changeVolume = (v) => {
-        setVolume(v);
-        if (audioRef.current) audioRef.current.volume = v;
-        saveConfig({ volume: v });
-    };
-
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => { if (audioRef.current) audioRef.current.pause(); };
-    }, []);
 
     const formatSize = (bytes) => {
         if (bytes > 1024*1024) return (bytes / (1024*1024)).toFixed(1) + ' MB';
         return (bytes / 1024).toFixed(0) + ' KB';
     };
 
+    // Spotify helpers
+    const saveSpotifyCfg = (updates) => {
+        const next = { ...spotifyCfg, ...updates };
+        setSpotifyCfg(next);
+        API.post('/api/spotify/config', next);
+    };
+
+    const connectSpotify = async () => {
+        const res = await API.get('/api/spotify/auth-url');
+        if (res?.url) window.open(res.url, '_blank', 'width=500,height=700');
+        // Poll for connection
+        const poll = setInterval(async () => {
+            const cfg = await API.get('/api/spotify/config');
+            if (cfg?.connected) {
+                clearInterval(poll);
+                setSpotifyCfg(cfg);
+                m.setSource('spotify');
+                m.pollSpotify();
+                toast('Spotify verbunden!', 'success');
+            }
+        }, 2000);
+        setTimeout(() => clearInterval(poll), 60000);
+    };
+
+    const disconnectSpotify = async () => {
+        await API.post('/api/spotify/disconnect');
+        setSpotifyCfg(s => ({ ...s, connected: false }));
+        m.setSource('local');
+        toast('Spotify getrennt', 'success');
+    };
+
     return (
         <div>
             <div className="page-header">
-                <h2>🎵 {t('nav.music', 'Musik-Player')}</h2>
-                <p>Hintergrundmusik während des Spiels</p>
+                <h2>{'\uD83C\uDFB5'} {t('nav.music', 'Musik-Player')}</h2>
+                <p>Hintergrundmusik - spielt weiter beim Seitenwechsel</p>
             </div>
 
-            {/* Now Playing / Transport */}
-            <div className="card" style={{padding: 16, marginBottom: 12, background: isPlaying ? 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.06))' : 'var(--bg-card)'}}>
+            {/* Source Selector */}
+            <div className="card" style={{padding: 12, marginBottom: 12, display: 'flex', gap: 8}}>
+                <button className={'btn ' + (m.source === 'local' ? 'btn-primary' : '')}
+                    onClick={() => { m.setSource('local'); }}
+                    style={{flex: 1}}>
+                    {'\uD83D\uDCBE'} Lokale Musik
+                </button>
+                <button className={'btn ' + (m.source === 'spotify' ? 'btn-primary' : '')}
+                    onClick={() => { if (spotifyCfg.connected) { m.setSource('spotify'); m.pollSpotify(); } }}
+                    style={{flex: 1, opacity: spotifyCfg.connected ? 1 : 0.5}}
+                    disabled={!spotifyCfg.connected}>
+                    {'\uD83C\uDFB5'} Spotify {spotifyCfg.connected ? '' : '(nicht verbunden)'}
+                </button>
+            </div>
+
+            {/* Spotify Section */}
+            <div className="card" style={{padding: 16, marginBottom: 12}}>
+                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12}}>
+                    <h4 style={{margin: 0}}>{'\uD83C\uDFB5'} Spotify Integration</h4>
+                    <span style={{fontSize: 12, color: spotifyCfg.connected ? 'var(--success)' : 'var(--text-dim)'}}>
+                        {spotifyCfg.connected ? '\u2022 Verbunden' : '\u2022 Nicht verbunden'}
+                    </span>
+                </div>
+
+                {!spotifyCfg.connected ? (
+                    <div>
+                        <div style={{marginBottom: 12}}>
+                            <label style={{fontSize: 13, fontWeight: 500}}>Spotify Client ID</label>
+                            <div style={{display: 'flex', gap: 8, marginTop: 4}}>
+                                <input type="text" value={spotifyCfg.client_id || ''}
+                                    onChange={e => saveSpotifyCfg({ client_id: e.target.value })}
+                                    placeholder="Deine Spotify App Client ID"
+                                    className="form-input" style={{flex: 1}} />
+                                <button className="btn btn-primary" onClick={connectSpotify}
+                                    disabled={!spotifyCfg.client_id}>Verbinden</button>
+                            </div>
+                            <div style={{fontSize: 11, color: 'var(--text-dim)', marginTop: 4}}>
+                                Erstelle eine App auf <a href="https://developer.spotify.com/dashboard" target="_blank"
+                                    style={{color: 'var(--accent)'}}>developer.spotify.com</a> und kopiere die Client ID.
+                                Redirect URI: <code style={{fontSize: 10}}>{window.location.origin}/api/spotify/callback</code>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div>
+                        {/* Spotify Now Playing */}
+                        <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12}}>
+                            <div style={{width: 56, height: 56, borderRadius: 8, background: 'var(--bg-card)', overflow: 'hidden', flexShrink: 0}}>
+                                {m.spotifyState.album_art ? <img src={m.spotifyState.album_art} style={{width:'100%',height:'100%',objectFit:'cover'}} /> :
+                                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:28}}>{'\uD83C\uDFB5'}</div>}
+                            </div>
+                            <div style={{flex: 1, minWidth: 0}}>
+                                <div style={{fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                    {m.spotifyState.track || 'Nichts läuft'}
+                                </div>
+                                <div style={{fontSize: 12, color: 'var(--text-dim)'}}>
+                                    {m.spotifyState.artist}
+                                    {m.spotifyState.device && <span> {'\u00B7'} {m.spotifyState.device}</span>}
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{display: 'flex', gap: 8}}>
+                            <button className="btn" style={{fontSize: 11}} onClick={disconnectSpotify}>Trennen</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Transport Controls (unified) */}
+            <div className="card" style={{padding: 16, marginBottom: 12, background: m.isPlaying ? 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.06))' : 'var(--bg-card)'}}>
                 <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
-                    <div style={{fontSize: 36}}>{isPlaying ? '🎶' : '🎵'}</div>
+                    <div style={{fontSize: 36}}>{m.isPlaying ? '\uD83C\uDFB6' : '\uD83C\uDFB5'}</div>
                     <div style={{flex: 1}}>
                         <div style={{fontWeight: 600, fontSize: 15}}>
-                            {currentTrack ? currentTrack.replace(/\.[^.]+$/, '') : 'Kein Track ausgewählt'}
+                            {m.currentTrack ? (m.source === 'spotify' ? m.spotifyState.track : m.currentTrack.replace(/\.[^.]+$/, '')) : 'Kein Track ausgewählt'}
                         </div>
                         <div style={{fontSize: 12, color: 'var(--text-dim)'}}>
-                            {isPlaying ? '▶ Spielt...' : '⏸ Pausiert'}
-                            {playlist.length > 0 && ` · ${playlist.length} in Playlist`}
+                            {m.isPlaying ? '\u25B6 Spielt...' : '\u23F8 Pausiert'}
+                            {m.source === 'local' && m.playlist.length > 0 && ' \u00B7 ' + m.playlist.length + ' in Playlist'}
+                            {' \u00B7 '}<span style={{color: m.source === 'spotify' ? '#1ed760' : 'var(--accent)'}}>{m.source === 'spotify' ? 'Spotify' : 'Lokal'}</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Transport Controls */}
                 <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12}}>
-                    <button onClick={() => { setShuffle(!shuffle); saveConfig({ shuffle: !shuffle }); }}
-                        className="btn" style={{fontSize: 16, padding: '4px 8px', opacity: shuffle ? 1 : 0.4}} title="Shuffle">🔀</button>
-                    <button onClick={skipPrev} className="btn" style={{fontSize: 18, padding: '4px 10px'}} title="Zurück">⏮</button>
-                    <button onClick={togglePlay} className="btn btn-primary" style={{fontSize: 22, padding: '6px 16px', borderRadius: 999}}>
-                        {isPlaying ? '⏸' : '▶'}
+                    <button onClick={() => { m.setShuffle(!m.shuffle); m.saveConfig({ shuffle: !m.shuffle }); }}
+                        className="btn" style={{fontSize: 16, padding: '4px 8px', opacity: m.shuffle ? 1 : 0.4}}>🔀</button>
+                    <button onClick={m.skipPrev} className="btn" style={{fontSize: 18, padding: '4px 10px'}}>{'\u23EE'}</button>
+                    <button onClick={m.togglePlay} className="btn btn-primary" style={{fontSize: 22, padding: '6px 16px', borderRadius: 999}}>
+                        {m.isPlaying ? '\u23F8' : '\u25B6'}
                     </button>
-                    <button onClick={skipNext} className="btn" style={{fontSize: 18, padding: '4px 10px'}} title="Weiter">⏭</button>
-                    <button onClick={() => { setRepeat(!repeat); saveConfig({ repeat: !repeat }); }}
-                        className="btn" style={{fontSize: 16, padding: '4px 8px', opacity: repeat ? 1 : 0.4}} title="Repeat">🔁</button>
+                    <button onClick={m.skipNext} className="btn" style={{fontSize: 18, padding: '4px 10px'}}>{'\u23ED'}</button>
+                    <button onClick={() => { m.setRepeat(!m.repeat); m.saveConfig({ repeat: !m.repeat }); }}
+                        className="btn" style={{fontSize: 16, padding: '4px 8px', opacity: m.repeat ? 1 : 0.4}}>🔁</button>
                 </div>
 
-                {/* Volume */}
                 <div style={{display: 'flex', alignItems: 'center', gap: 8, marginTop: 10}}>
-                    <span style={{fontSize: 14}}>🔈</span>
-                    <input type="range" min="0" max="1" step="0.05" value={volume}
-                        onChange={e => changeVolume(parseFloat(e.target.value))}
+                    <span style={{fontSize: 14}}>{'\uD83D\uDD08'}</span>
+                    <input type="range" min="0" max="1" step="0.05" value={m.volume}
+                        onChange={e => m.changeVolume(parseFloat(e.target.value))}
                         style={{flex: 1, accentColor: 'var(--accent)'}} />
-                    <span style={{fontFamily: 'monospace', fontSize: 12, minWidth: 32}}>{Math.round(volume * 100)}%</span>
+                    <span style={{fontFamily: 'monospace', fontSize: 12, minWidth: 32}}>{Math.round(m.volume * 100)}%</span>
                 </div>
 
-                {/* Ducking */}
-                <div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8}}>
-                    <label style={{display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13}}>
-                        <input type="checkbox" checked={duckOnEvent}
-                            onChange={e => { setDuckOnEvent(e.target.checked); saveConfig({ duck_on_event: e.target.checked }); }}
-                            style={{accentColor: 'var(--accent)'}} />
-                        Musik leiser bei Caller/Crowd
-                    </label>
-                    {duckOnEvent && (
-                        <input type="range" min="0" max="0.5" step="0.05" value={duckLevel}
-                            onChange={e => { setDuckLevel(parseFloat(e.target.value)); saveConfig({ duck_level: parseFloat(e.target.value) }); }}
-                            style={{width: 80, accentColor: 'var(--accent)'}} title={`Duck-Level: ${Math.round(duckLevel*100)}%`} />
-                    )}
-                </div>
-            </div>
-
-            {/* Upload */}
-            <div className="card" style={{padding: 16, marginBottom: 12}}>
-                <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-                    <label className="btn btn-primary" style={{cursor: 'pointer'}}>
-                        {uploading ? '⏳ Hochladen...' : '📁 Musik hochladen'}
-                        <input type="file" accept=".mp3,.m4a,.ogg,.wav,.flac,.aac" multiple
-                            onChange={uploadMusic} style={{display: 'none'}} />
-                    </label>
-                    <span style={{fontSize: 12, color: 'var(--text-dim)'}}>MP3, M4A, OGG, WAV, FLAC, AAC</span>
-                </div>
-            </div>
-
-            {/* File List & Playlist */}
-            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12}}>
-                {/* All Files */}
-                <div className="card" style={{padding: 16}}>
-                    <h4 style={{margin: '0 0 10px'}}>📂 Musikdateien ({musicFiles.length})</h4>
-                    <div style={{display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflow: 'auto'}}>
-                        {musicFiles.map(f => (
-                            <div key={f.filename} style={{
-                                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
-                                background: currentTrack === f.filename ? 'rgba(139,92,246,0.12)' : 'transparent',
-                                borderRadius: 4, border: '1px solid var(--border)',
-                            }}>
-                                <button onClick={() => playTrack(f.filename)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--accent)'}}>
-                                    {currentTrack === f.filename && isPlaying ? '⏸' : '▶'}
-                                </button>
-                                <div style={{flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                                    {f.filename.replace(/\.[^.]+$/, '')}
-                                </div>
-                                <span style={{fontSize: 11, color: 'var(--text-dim)'}}>{formatSize(f.size)}</span>
-                                <button onClick={() => addToPlaylist(f.filename)} title="Zur Playlist"
-                                    style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: playlist.includes(f.filename) ? 'var(--success)' : 'var(--text-dim)'}}>
-                                    {playlist.includes(f.filename) ? '✓' : '+'}
-                                </button>
-                                <button onClick={() => deleteFile(f.filename)} title="Löschen"
-                                    style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#f44'}}>✕</button>
-                            </div>
-                        ))}
-                        {musicFiles.length === 0 && (
-                            <div style={{textAlign: 'center', color: 'var(--text-dim)', padding: 20, fontSize: 13}}>
-                                Keine Musikdateien. Lade oben Dateien hoch.
-                            </div>
+                {m.source === 'local' && (
+                    <div style={{marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8}}>
+                        <label style={{display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13}}>
+                            <input type="checkbox" checked={m.duckOnEvent}
+                                onChange={e => { m.setDuckOnEvent(e.target.checked); m.saveConfig({ duck_on_event: e.target.checked }); }}
+                                style={{accentColor: 'var(--accent)'}} />
+                            Musik leiser bei Caller/Crowd
+                        </label>
+                        {m.duckOnEvent && (
+                            <input type="range" min="0" max="0.5" step="0.05" value={m.duckLevel}
+                                onChange={e => { m.setDuckLevel(parseFloat(e.target.value)); m.saveConfig({ duck_level: parseFloat(e.target.value) }); }}
+                                style={{width: 80, accentColor: 'var(--accent)'}} />
                         )}
                     </div>
-                </div>
-
-                {/* Playlist */}
-                <div className="card" style={{padding: 16}}>
-                    <h4 style={{margin: '0 0 10px'}}>🎶 Playlist ({playlist.length})</h4>
-                    <div style={{display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflow: 'auto'}}>
-                        {playlist.map((filename, idx) => (
-                            <div key={filename + idx} style={{
-                                display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
-                                background: currentTrack === filename ? 'rgba(139,92,246,0.12)' : 'transparent',
-                                borderRadius: 4, border: '1px solid var(--border)',
-                            }}>
-                                <span style={{fontSize: 11, color: 'var(--text-dim)', minWidth: 16}}>{idx + 1}.</span>
-                                <button onClick={() => playTrack(filename)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--accent)'}}>
-                                    {currentTrack === filename && isPlaying ? '⏸' : '▶'}
-                                </button>
-                                <div style={{flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                                    {filename.replace(/\.[^.]+$/, '')}
-                                </div>
-                                <button onClick={() => removeFromPlaylist(filename)} title="Entfernen"
-                                    style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#f44'}}>✕</button>
-                            </div>
-                        ))}
-                        {playlist.length === 0 && (
-                            <div style={{textAlign: 'center', color: 'var(--text-dim)', padding: 20, fontSize: 13}}>
-                                Leer — klicke "+" bei Musikdateien um Songs zur Playlist hinzuzufügen.
-                            </div>
-                        )}
-                    </div>
-                </div>
+                )}
             </div>
+
+            {/* Local Files (only when source is local) */}
+            {m.source === 'local' && (
+                <>
+                    <div className="card" style={{padding: 16, marginBottom: 12}}>
+                        <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+                            <label className="btn btn-primary" style={{cursor: 'pointer'}}>
+                                {uploading ? '\u23F3 Hochladen...' : '\uD83D\uDCC1 Musik hochladen'}
+                                <input type="file" accept=".mp3,.m4a,.ogg,.wav,.flac,.aac" multiple
+                                    onChange={uploadMusic} style={{display: 'none'}} />
+                            </label>
+                            <span style={{fontSize: 12, color: 'var(--text-dim)'}}>MP3, M4A, OGG, WAV, FLAC, AAC</span>
+                        </div>
+                    </div>
+
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12}}>
+                        <div className="card" style={{padding: 16}}>
+                            <h4 style={{margin: '0 0 10px'}}>{'\uD83D\uDCC2'} Musikdateien ({m.musicFiles.length})</h4>
+                            <div style={{display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflow: 'auto'}}>
+                                {m.musicFiles.map(f => (
+                                    <div key={f.filename} style={{
+                                        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
+                                        background: m.currentTrack === f.filename ? 'rgba(139,92,246,0.12)' : 'transparent',
+                                        borderRadius: 4, border: '1px solid var(--border)',
+                                    }}>
+                                        <button onClick={() => m.playTrack(f.filename)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--accent)'}}>
+                                            {m.currentTrack === f.filename && m.isPlaying ? '\u23F8' : '\u25B6'}
+                                        </button>
+                                        <div style={{flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                            {f.filename.replace(/\.[^.]+$/, '')}
+                                        </div>
+                                        <span style={{fontSize: 11, color: 'var(--text-dim)'}}>{formatSize(f.size)}</span>
+                                        <button onClick={() => addToPlaylist(f.filename)}
+                                            style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: m.playlist.includes(f.filename) ? 'var(--success)' : 'var(--text-dim)'}}>
+                                            {m.playlist.includes(f.filename) ? '\u2713' : '+'}
+                                        </button>
+                                        <button onClick={() => deleteFile(f.filename)}
+                                            style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#f44'}}>{'\u2715'}</button>
+                                    </div>
+                                ))}
+                                {m.musicFiles.length === 0 && (
+                                    <div style={{textAlign: 'center', color: 'var(--text-dim)', padding: 20, fontSize: 13}}>
+                                        Keine Musikdateien. Lade oben Dateien hoch.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="card" style={{padding: 16}}>
+                            <h4 style={{margin: '0 0 10px'}}>{'\uD83C\uDFB6'} Playlist ({m.playlist.length})</h4>
+                            <div style={{display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflow: 'auto'}}>
+                                {m.playlist.map((filename, idx) => (
+                                    <div key={filename + idx} style={{
+                                        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
+                                        background: m.currentTrack === filename ? 'rgba(139,92,246,0.12)' : 'transparent',
+                                        borderRadius: 4, border: '1px solid var(--border)',
+                                    }}>
+                                        <span style={{fontSize: 11, color: 'var(--text-dim)', minWidth: 16}}>{idx + 1}.</span>
+                                        <button onClick={() => m.playTrack(filename)} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--accent)'}}>
+                                            {m.currentTrack === filename && m.isPlaying ? '\u23F8' : '\u25B6'}
+                                        </button>
+                                        <div style={{flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                            {filename.replace(/\.[^.]+$/, '')}
+                                        </div>
+                                        <button onClick={() => removeFromPlaylist(filename)}
+                                            style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#f44'}}>{'\u2715'}</button>
+                                    </div>
+                                ))}
+                                {m.playlist.length === 0 && (
+                                    <div style={{textAlign: 'center', color: 'var(--text-dim)', padding: 20, fontSize: 13}}>
+                                        Leer — klicke "+" bei Musikdateien um Songs hinzuzufügen.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
@@ -8041,9 +8271,10 @@ function App() {
 
     return (
         <ToastProvider>
+            <MusicProvider>
             <div className="app-container">
                 <Sidebar activePage={activePage} setActivePage={setActivePage} autodartsStatus={autodartsConnected} boardCount={boardCount} version={appVersion} />
-                <main className="main-content">
+                <main className="main-content" style={{paddingBottom: 72}}>
                     {/* Update Restart Overlay */}
                     {updateRestarting && (
                         <div style={{
@@ -8114,7 +8345,11 @@ function App() {
                         )}
                     </div>
                 )}
+
+                {/* Persistent Mini Player */}
+                <MiniPlayer />
             </div>
+            </MusicProvider>
         </ToastProvider>
     );
 }
