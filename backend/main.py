@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
@@ -287,7 +288,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.4.2", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.4.3", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
