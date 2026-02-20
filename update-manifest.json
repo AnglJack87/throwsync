@@ -1,14 +1,14 @@
 {
-    "version": "2.4.6",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.6/throwsync-v2.4.6.zip",
+    "version": "2.4.7",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-v2.4.7.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.6/throwsync-v2.4.6.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.6/throwsync-2.4.6-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.6/throwsync-2.4.6-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.6/throwsync-2.4.6-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-v2.4.7.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-macos-arm64"
     },
-    "changelog": "- v2.4.6 - Fix: run.py venv Auto-Aktivierung für Linux",
-    "size": 4581315,
+    "changelog": "- Fix: Online-Match zwischen 2 Boards korrekt erkannt\n- Fix: Korrekte Turn-Signale (grün/rot) pro Board\n- Fix: LED grün vor erstem Dart bei Match-Start",
+    "size": 0,
     "min_python": "3.8",
     "released": "2026-02-20"
 }

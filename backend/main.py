@@ -288,7 +288,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.4.6", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.4.7", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

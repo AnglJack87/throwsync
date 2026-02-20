@@ -300,25 +300,27 @@ class AutodartsBoardConnection:
                 
                 # Detect "my" player index: first throw in a match = me
                 # When a dart physically hits MY board, the current player MUST be me
-                if self._my_player_index < 0 and self._last_player_index >= 0:
-                    self._my_player_index = self._last_player_index
-                    logger.info(f"Board '{self.name}': Spieler-Erkennung (Dart) -> Ich bin Player #{self._my_player_index}")
+                if self._last_player_index >= 0:
+                    if self._my_player_index < 0:
+                        self._my_player_index = self._last_player_index
+                        logger.info(f"Board '{self.name}': Spieler-Erkennung (Dart) -> Ich bin Player #{self._my_player_index}")
+                    # Physical dart on my board in online match → confirm this is my player
+                    if not self._is_local_match and self._my_player_index != self._last_player_index:
+                        old = self._my_player_index
+                        self._my_player_index = self._last_player_index
+                        logger.info(f"Board '{self.name}': Dart-Korrektur → Ich bin Player #{self._my_player_index} (war: #{old})")
                 
-                # Fire my_turn on dart hit:
-                # - Local 2 humans: always green
-                # - Local vs bot: green only if human is throwing (dart hits = always human, bot doesn't throw physical darts)
-                # - Online: green if my index
+                # Fire my_turn on dart hit (a physical dart on this board = this player is active here)
                 is_bot_active = self._last_player_index in self._bot_player_indices
-                if self._is_local_match or (self._my_player_index >= 0 and self._last_player_index == self._my_player_index):
-                    if not is_bot_active:
-                        await self._trigger_event("my_turn")
-                        await self._broadcast_display_state({
-                            "type": "turn_update",
-                            "is_my_turn": True,
-                            "is_local": self._is_local_match,
-                            "has_bot": len(self._bot_player_indices) > 0,
-                            "my_player_index": self._my_player_index,
-                        })
+                if not is_bot_active:
+                    await self._trigger_event("my_turn")
+                    await self._broadcast_display_state({
+                        "type": "turn_update",
+                        "is_my_turn": True,
+                        "is_local": self._is_local_match,
+                        "has_bot": len(self._bot_player_indices) > 0,
+                        "my_player_index": self._my_player_index,
+                    })
                 
                 # ── After 3rd dart: schedule score announcement ──
                 # Short delay lets match-state bust-detection fire first
@@ -462,7 +464,7 @@ class AutodartsBoardConnection:
                         logger.info(f"Board '{self.name}': LOKALES Match ({len(players)} Spieler, Bots={has_bots})")
                 
                 # For local matches: detect my index
-                if self._is_local_match and self._my_player_index < 0:
+                if self._is_local_match and self._my_player_index < 0 and self._match_player_names:
                     # I'm the first non-bot player
                     for idx in range(len(self._match_player_names)):
                         if idx not in self._bot_player_indices:
@@ -471,6 +473,9 @@ class AutodartsBoardConnection:
                     if self._my_player_index < 0:
                         self._my_player_index = 0
                     logger.info(f"Board '{self.name}': Lokales Match → Ich bin Player #{self._my_player_index}")
+                elif not self._match_player_names:
+                    # No player data at match start → will be detected from first state update
+                    logger.info(f"Board '{self.name}': Keine Spieler-Daten im Match-Start, warte auf State...")
                 
                 # Fallback for online: try hostBoardId
                 if not self._is_local_match and self._my_player_index < 0:
@@ -488,6 +493,11 @@ class AutodartsBoardConnection:
                     logger.info(f"Board '{self.name}' TRIGGER: match-start -> {events}")
                     await self._dispatch_events("game-started", events)
                 await self._broadcast_caller("game_on")
+                
+                # Immediately show green → will be corrected to red on opponent board
+                # when first state update arrives with player/board data
+                await self._trigger_event("my_turn")
+                logger.info(f"Board '{self.name}': Match-Start → my_turn (grün) als Standard")
                 
                 # Auto-activate first player with walk-on sound
                 if self._match_player_names:
@@ -533,33 +543,48 @@ class AutodartsBoardConnection:
         if not isinstance(state, dict):
             return
         
-        # ── Try to detect player from state data if still unknown ──
-        if self._my_player_index < 0 or not self._match_player_names:
-            players = state.get("players", state.get("participants", []))
-            if isinstance(players, list):
-                for idx, p in enumerate(players):
-                    if isinstance(p, dict):
-                        # Extract names if we don't have them yet
-                        if idx >= len(self._match_player_names):
-                            p_name = (p.get("name") or p.get("displayName") or 
-                                     p.get("userName") or p.get("username") or
-                                     p.get("userId") or p.get("id") or f"Player {idx+1}")
-                            self._match_player_names.append(str(p_name))
-                            logger.info(f"Board '{self.name}': Spieler #{idx} Name aus State: '{p_name}'")
-                        
-                        # Detect bots from state data
-                        if idx not in self._bot_player_indices:
-                            is_bot = (p.get("cpuPPR") is not None or p.get("cpu") is not None
-                                     or p.get("isBot") or p.get("isCpu") or p.get("bot"))
-                            if is_bot:
-                                self._bot_player_indices.add(idx)
-                                logger.info(f"Board '{self.name}': Spieler #{idx} als BOT erkannt (aus State)")
-                        
-                        p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
-                        if p_board and p_board == self.board_id and self._my_player_index < 0:
-                            self._my_player_index = idx
-                            logger.info(f"Board '{self.name}': ★ Spieler aus State-Daten erkannt → Player #{idx}")
-                            break
+        # ── Detect players, board IDs, local/online from EVERY state update ──
+        players = state.get("players", state.get("participants", []))
+        if isinstance(players, list) and len(players) > 0:
+            board_ids_in_state = set()
+            my_idx_from_board = -1
+            names_were_empty = not self._match_player_names
+            
+            for idx, p in enumerate(players):
+                if isinstance(p, dict):
+                    # Extract names if we don't have them yet
+                    if idx >= len(self._match_player_names):
+                        p_name = (p.get("name") or p.get("displayName") or 
+                                 p.get("userName") or p.get("username") or
+                                 p.get("userId") or p.get("id") or f"Player {idx+1}")
+                        self._match_player_names.append(str(p_name))
+                        logger.info(f"Board '{self.name}': Spieler #{idx} Name aus State: '{p_name}'")
+                    
+                    # Detect bots from state data
+                    if idx not in self._bot_player_indices:
+                        is_bot = (p.get("cpuPPR") is not None or p.get("cpu") is not None
+                                 or p.get("isBot") or p.get("isCpu") or p.get("bot"))
+                        if is_bot:
+                            self._bot_player_indices.add(idx)
+                            logger.info(f"Board '{self.name}': Spieler #{idx} als BOT erkannt (aus State)")
+                    
+                    # Collect board IDs from ALL players
+                    p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
+                    if p_board:
+                        board_ids_in_state.add(p_board)
+                        if p_board == self.board_id:
+                            my_idx_from_board = idx
+            
+            # Re-evaluate local vs online when we have board ID data
+            if len(board_ids_in_state) > 1 and self._is_local_match:
+                self._is_local_match = False
+                logger.info(f"Board '{self.name}': ★ ONLINE Match erkannt! ({len(board_ids_in_state)} Boards in State-Daten)")
+            
+            # Assign my_player_index from board ID (override local fallback)
+            if my_idx_from_board >= 0 and my_idx_from_board != self._my_player_index:
+                old = self._my_player_index
+                self._my_player_index = my_idx_from_board
+                logger.info(f"Board '{self.name}': ★ Spieler aus Board-ID erkannt → Player #{my_idx_from_board} (war: #{old})")
         
         # ── Parse state (try multiple field names for API compatibility) ──
         game_finished = (state.get("gameFinished") or state.get("finished") 
