@@ -261,7 +261,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.3.0", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.3.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -2133,19 +2133,24 @@ async def auto_activate_player_by_name(autodarts_name: str, play_walk_on: bool =
         play_walk_on: Only True at match start, False during normal turn changes
     """
     if not autodarts_name:
+        logger.debug("Auto-Profil: Kein Autodarts-Name übergeben")
         return
     profiles = config_manager.get("player_profiles", [])
     if not profiles:
+        logger.info(f"Auto-Profil: Keine ThrowSync-Profile angelegt (Autodarts: '{autodarts_name}')")
         return
     
     ad_lower = autodarts_name.lower().strip()
     active_id = config_manager.get("active_player", "")
     matched = None
+    profile_names = [p.get("name", "?") for p in profiles]
+    logger.info(f"Auto-Profil: Suche '{autodarts_name}' in ThrowSync-Profilen: {profile_names}")
     
     # 1. Exact match
     for p in profiles:
         if p.get("name", "").lower().strip() == ad_lower:
             matched = p
+            logger.info(f"Auto-Profil: EXAKT Match '{autodarts_name}' == '{p.get('name')}'")
             break
     
     # 2. ThrowSync name contained in Autodarts name
@@ -2154,6 +2159,7 @@ async def auto_activate_player_by_name(autodarts_name: str, play_walk_on: bool =
             ts_name = p.get("name", "").lower().strip()
             if ts_name and ts_name in ad_lower:
                 matched = p
+                logger.info(f"Auto-Profil: TEIL-Match '{ts_name}' in '{ad_lower}'")
                 break
     
     # 3. Autodarts name contained in ThrowSync name
@@ -2162,15 +2168,16 @@ async def auto_activate_player_by_name(autodarts_name: str, play_walk_on: bool =
             ts_name = p.get("name", "").lower().strip()
             if ts_name and ad_lower in ts_name:
                 matched = p
+                logger.info(f"Auto-Profil: TEIL-Match '{ad_lower}' in '{ts_name}'")
                 break
     
     if not matched:
-        logger.info(f"Auto-Profil: Kein ThrowSync-Profil für '{autodarts_name}' gefunden")
+        logger.info(f"Auto-Profil: KEIN Match für '{autodarts_name}' in {profile_names}")
         return
     
     # Skip if already active
     if matched.get("id") == active_id:
-        logger.debug(f"Auto-Profil: '{matched.get('name')}' ist bereits aktiv")
+        logger.info(f"Auto-Profil: '{matched.get('name')}' ist bereits aktiv, übersprungen")
         return
     
     logger.info(f"Auto-Profil: '{autodarts_name}' → ThrowSync-Profil '{matched.get('name')}' aktiviert!")

@@ -194,8 +194,10 @@ const state = {
     showToasts: true,
     isMyTurn: null,     // null = unknown, true/false
     isLocal: true,      // local match = no opponent indicator
+    hasBot: false,      // local vs bot game
     allScores: [],      // all player scores
     activePlayerIndex: -1,
+    activePlayerName: '',
 };
 
 let ws = null;
@@ -252,14 +254,18 @@ function handleMessage(msg) {
             if (d.remaining !== undefined) state.remaining = d.remaining;
             if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
             if (d.is_local !== undefined) state.isLocal = d.is_local;
+            if (d.has_bot !== undefined) state.hasBot = d.has_bot;
             if (d.scores) state.allScores = d.scores;
             if (d.player_index !== undefined) state.activePlayerIndex = d.player_index;
+            if (d.active_player_name) state.activePlayerName = d.active_player_name;
             render();
         }
         if (d.type === 'turn_update') {
             if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
             if (d.is_local !== undefined) state.isLocal = d.is_local;
+            if (d.has_bot !== undefined) state.hasBot = d.has_bot;
             if (d.active_player_index !== undefined) state.activePlayerIndex = d.active_player_index;
+            if (d.active_player_name) state.activePlayerName = d.active_player_name;
             render();
         }
     }
@@ -413,17 +419,26 @@ function render() {
 
     // HUD
     if (state.showHud) {
-        // Turn indicator: different for local vs online
+        // Turn indicator: 3 modes
         let turnLabel = '';
         let turnColor = '#666';
-        if (state.isLocal) {
-            // Local: show which player number is active (no "opponent" concept)
+        if (state.isLocal && !state.hasBot) {
+            // Local 2 humans: show player name/number, always green
             if (state.activePlayerIndex >= 0) {
-                turnLabel = 'Spieler ' + (state.activePlayerIndex + 1);
-                turnColor = '#22c55e'; // Always green — both players at same board
+                turnLabel = state.activePlayerName || ('Spieler ' + (state.activePlayerIndex + 1));
+                turnColor = '#22c55e';
+            }
+        } else if (state.isLocal && state.hasBot) {
+            // Local vs bot: green for human, red for bot
+            if (state.isMyTurn === true) {
+                turnLabel = state.activePlayerName || 'DU BIST DRAN';
+                turnColor = '#22c55e';
+            } else if (state.isMyTurn === false) {
+                turnLabel = state.activePlayerName || 'BOT';
+                turnColor = '#ef4444';
             }
         } else {
-            // Online: show my turn vs opponent
+            // Online: my turn vs opponent
             if (state.isMyTurn === true) {
                 turnLabel = 'DU BIST DRAN';
                 turnColor = '#22c55e';

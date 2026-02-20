@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#8b5cf6">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -42,6 +42,9 @@
             color: var(--text-primary);
             min-height: 100vh;
             overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
 
         ::-webkit-scrollbar { width: 6px; }
@@ -545,7 +548,7 @@
 
         /* Mini Player */
         .mini-player {
-            position: fixed; bottom: 0; left: 220px; right: 0;
+            position: fixed; bottom: 0; left: 260px; right: 0;
             height: 56px; background: rgba(18,18,26,0.97);
             border-top: 1px solid var(--border);
             backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -573,7 +576,28 @@
             .grid-4 { grid-template-columns: repeat(3, 1fr); }
         }
 
-        @media (max-width: 768px) {
+        /* Tablet / iPad (641px - 1024px): Compact sidebar (icons only) */
+        @media (min-width: 641px) and (max-width: 1024px) {
+            .sidebar {
+                width: 64px; padding: 12px 4px; gap: 2px;
+            }
+            .sidebar-logo h1 { font-size: 10px; letter-spacing: 1px; }
+            .sidebar-logo .version { font-size: 8px; }
+            .nav-section { font-size: 0; height: 8px; margin: 4px 0; }
+            .nav-item { flex-direction: column; gap: 2px; padding: 8px 4px; border-radius: 8px; text-align: center; justify-content: center; }
+            .nav-item .nav-icon { font-size: 18px; }
+            .nav-item span:last-child { font-size: 8px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 56px; }
+            .sidebar-footer { font-size: 0; padding: 4px; }
+            .sidebar-footer * { font-size: 0; }
+            .sidebar-footer .status-dot { font-size: initial; }
+            .main-content { margin-left: 64px; padding: 16px 16px 80px 16px; }
+            .mini-player { left: 64px; }
+            .grid-2, .grid-3 { grid-template-columns: 1fr 1fr; }
+            .page-header h2 { font-size: 22px; }
+        }
+
+        /* Mobile (≤640px): Bottom nav bar */
+        @media (max-width: 640px) {
             .sidebar {
                 position: fixed; top: auto; left: 0; right: 0; bottom: 0;
                 width: 100%; height: auto; flex-direction: row;

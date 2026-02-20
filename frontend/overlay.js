@@ -27,7 +27,9 @@
         hudVisible: true,
         isMyTurn: null,
         isLocal: true,
+        hasBot: false,
         activePlayerIndex: -1,
+        activePlayerName: '',
     };
 
     // ── Create overlay container ──
@@ -133,10 +135,18 @@
     function render() {
         let turnLabel = '';
         let turnColor = '#666';
-        if (state.isLocal) {
+        if (state.isLocal && !state.hasBot) {
             if (state.activePlayerIndex >= 0) {
-                turnLabel = 'Spieler ' + (state.activePlayerIndex + 1);
+                turnLabel = state.activePlayerName || ('Spieler ' + (state.activePlayerIndex + 1));
                 turnColor = '#22c55e';
+            }
+        } else if (state.isLocal && state.hasBot) {
+            if (state.isMyTurn === true) {
+                turnLabel = state.activePlayerName || 'DEIN WURF';
+                turnColor = '#22c55e';
+            } else if (state.isMyTurn === false) {
+                turnLabel = state.activePlayerName || 'BOT';
+                turnColor = '#ef4444';
             }
         } else {
             if (state.isMyTurn === true) {
@@ -310,13 +320,17 @@
                     if (d.remaining !== undefined) state.remaining = d.remaining;
                     if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
                     if (d.is_local !== undefined) state.isLocal = d.is_local;
+                    if (d.has_bot !== undefined) state.hasBot = d.has_bot;
                     if (d.player_index !== undefined) state.activePlayerIndex = d.player_index;
+                    if (d.active_player_name) state.activePlayerName = d.active_player_name;
                     render();
                 }
                 if (d.type === 'turn_update') {
                     if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
                     if (d.is_local !== undefined) state.isLocal = d.is_local;
+                    if (d.has_bot !== undefined) state.hasBot = d.has_bot;
                     if (d.active_player_index !== undefined) state.activePlayerIndex = d.active_player_index;
+                    if (d.active_player_name) state.activePlayerName = d.active_player_name;
                     render();
                 }
             }
