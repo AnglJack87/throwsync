@@ -1092,6 +1092,7 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, versi
         { id: 'integrations', icon: '\uD83D\uDD17', label: 'Integrationen' },
         { id: 'flash', icon: '\u21AF', label: 'Firmware' },
         { id: 'presets', icon: '\u2605', label: 'Presets' },
+        { id: 'logs', icon: '\uD83D\uDCCB', label: 'Logs & Debug' },
         { id: 'settings', icon: '\u2699', label: t('nav.settings', 'Einstellungen') },
     ];
 
@@ -6351,6 +6352,315 @@ function MusicPage() {
 }
 
 
+// ─── Logs & Debug ───────────────────────────────────────────────────────────
+
+function LogsPage() {
+    const [tab, setTab] = useState('logs');
+    const [logs, setLogs] = useState([]);
+    const [bugs, setBugs] = useState([]);
+    const [autoScroll, setAutoScroll] = useState(true);
+    const [levelFilter, setLevelFilter] = useState('');
+    const [searchFilter, setSearchFilter] = useState('');
+    const [paused, setPaused] = useState(false);
+    const [newBug, setNewBug] = useState({ title: '', description: '', priority: 'normal' });
+    const [showNewBug, setShowNewBug] = useState(false);
+    const [selectedBug, setSelectedBug] = useState(null);
+    const lastIdRef = useRef(0);
+    const logEndRef = useRef(null);
+    const pollRef = useRef(null);
+    const toast = useToast();
+
+    // Load logs
+    const fetchLogs = () => {
+        if (paused) return;
+        const params = new URLSearchParams();
+        if (levelFilter) params.set('level', levelFilter);
+        if (searchFilter) params.set('search', searchFilter);
+        if (lastIdRef.current > 0) params.set('after_id', lastIdRef.current);
+        params.set('limit', '500');
+        API.get('/api/logs?' + params.toString()).then(d => {
+            if (d?.entries?.length) {
+                if (lastIdRef.current === 0) {
+                    setLogs(d.entries);
+                } else {
+                    setLogs(prev => [...prev.slice(-1500), ...d.entries]);
+                }
+                lastIdRef.current = d.entries[d.entries.length - 1].id;
+            } else if (lastIdRef.current === 0 && d?.entries) {
+                setLogs(d.entries);
+            }
+        });
+    };
+
+    // Poll every 1.5s
+    useEffect(() => {
+        fetchLogs();
+        pollRef.current = setInterval(fetchLogs, 1500);
+        return () => clearInterval(pollRef.current);
+    }, [levelFilter, searchFilter, paused]);
+
+    // Reset when filter changes
+    useEffect(() => {
+        lastIdRef.current = 0;
+        setLogs([]);
+    }, [levelFilter, searchFilter]);
+
+    // Auto-scroll
+    useEffect(() => {
+        if (autoScroll && logEndRef.current) {
+            logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [logs, autoScroll]);
+
+    // Load bugs
+    useEffect(() => {
+        API.get('/api/bugs').then(d => setBugs(d?.bugs || []));
+    }, []);
+
+    const createBug = async () => {
+        if (!newBug.title.trim()) return;
+        const res = await API.post('/api/bugs', { ...newBug, attach_logs: true });
+        if (res?.success) {
+            setBugs(prev => [res.bug, ...prev]);
+            setNewBug({ title: '', description: '', priority: 'normal' });
+            setShowNewBug(false);
+            toast('Bug-Report erstellt (inkl. Log-Snapshot)', 'success');
+        }
+    };
+
+    const updateBug = async (id, data) => {
+        const res = await API.put('/api/bugs/' + id, data);
+        if (res?.success) {
+            setBugs(prev => prev.map(b => b.id === id ? res.bug : b));
+        }
+    };
+
+    const deleteBug = async (id) => {
+        await API.del('/api/bugs/' + id);
+        setBugs(prev => prev.filter(b => b.id !== id));
+        if (selectedBug?.id === id) setSelectedBug(null);
+        toast('Bug gelöscht', 'success');
+    };
+
+    const downloadLogs = () => {
+        window.open('/api/logs/download', '_blank');
+    };
+
+    const levelColors = { DEBUG: '#666', INFO: '#3b82f6', WARNING: '#f59e0b', ERROR: '#ef4444', CRITICAL: '#dc2626' };
+    const statusColors = { open: '#ef4444', in_progress: '#f59e0b', fixed: '#22c55e', closed: '#666' };
+    const statusLabels = { open: 'Offen', in_progress: 'In Arbeit', fixed: 'Gefixt', closed: 'Geschlossen' };
+    const prioColors = { low: '#666', normal: '#3b82f6', high: '#f59e0b', critical: '#ef4444' };
+
+    const formatTime = (ts) => {
+        const d = new Date(ts * 1000);
+        return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    };
+
+    return (
+        <div>
+            <div className="page-header">
+                <h2>{'\uD83D\uDCCB'} Logs & Debug</h2>
+                <p>Live-Logs, Bug-Tracker und Diagnose</p>
+            </div>
+
+            {/* Tabs */}
+            <div className="tabs" style={{marginBottom: 12}}>
+                {[
+                    { id: 'logs', label: '\uD83D\uDCDC Live-Logs' },
+                    { id: 'bugs', label: '\uD83D\uDC1B Bug-Tracker (' + bugs.filter(b => b.status === 'open').length + ')' },
+                ].map(t => (
+                    <button key={t.id} className={'tab ' + (tab === t.id ? 'active' : '')}
+                        onClick={() => setTab(t.id)}>{t.label}</button>
+                ))}
+            </div>
+
+            {tab === 'logs' && (
+                <>
+                    {/* Log Controls */}
+                    <div className="card" style={{padding: 12, marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
+                        <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)}
+                            style={{padding: '4px 8px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12}}>
+                            <option value="">Alle Level</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR,CRITICAL">ERROR+</option>
+                        </select>
+                        <input type="text" placeholder="Suche..." value={searchFilter}
+                            onChange={e => setSearchFilter(e.target.value)}
+                            style={{padding: '4px 8px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12, width: 200}} />
+                        <button className={'btn btn-sm ' + (paused ? 'btn-primary' : '')} onClick={() => setPaused(!paused)}>
+                            {paused ? '\u25B6 Weiter' : '\u23F8 Pause'}
+                        </button>
+                        <label style={{display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer'}}>
+                            <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)}
+                                style={{accentColor: 'var(--accent)'}} />
+                            Auto-Scroll
+                        </label>
+                        <div style={{flex: 1}} />
+                        <span style={{fontSize: 11, color: 'var(--text-dim)'}}>{logs.length} Einträge</span>
+                        <button className="btn btn-sm" onClick={downloadLogs}>{'\u2B07'} Download</button>
+                        <button className="btn btn-sm" onClick={() => { lastIdRef.current = 0; setLogs([]); fetchLogs(); }}>
+                            {'\u21BB'} Refresh
+                        </button>
+                    </div>
+
+                    {/* Log Output */}
+                    <div style={{
+                        background: '#0d0d12', border: '1px solid var(--border)', borderRadius: 8,
+                        fontFamily: "'JetBrains Mono', monospace", fontSize: 11, lineHeight: 1.6,
+                        maxHeight: 'calc(100vh - 280px)', overflow: 'auto', padding: 8,
+                    }}>
+                        {logs.map(e => (
+                            <div key={e.id} style={{
+                                padding: '1px 4px', borderRadius: 2,
+                                background: e.level === 'ERROR' || e.level === 'CRITICAL' ? 'rgba(239,68,68,0.08)' :
+                                           e.level === 'WARNING' ? 'rgba(245,158,11,0.05)' : 'transparent',
+                            }}>
+                                <span style={{color: '#555', marginRight: 6}}>{e.time.split(' - ')[0].split(',')[0].split(' ')[1] || e.time.slice(11,19)}</span>
+                                <span style={{color: levelColors[e.level] || '#888', fontWeight: e.level === 'ERROR' ? 700 : 400, marginRight: 6}}>
+                                    [{e.level}]
+                                </span>
+                                <span style={{color: '#7c7c9a', marginRight: 6}}>{e.name}:</span>
+                                <span style={{color: e.level === 'ERROR' ? '#fca5a5' : e.level === 'WARNING' ? '#fde68a' : '#c8c8d8'}}>
+                                    {e.msg}
+                                </span>
+                            </div>
+                        ))}
+                        {logs.length === 0 && (
+                            <div style={{textAlign: 'center', color: '#555', padding: 40}}>
+                                {paused ? '\u23F8 Pausiert' : 'Warte auf Log-Einträge...'}
+                            </div>
+                        )}
+                        <div ref={logEndRef} />
+                    </div>
+                </>
+            )}
+
+            {tab === 'bugs' && (
+                <>
+                    {/* New Bug Button */}
+                    <div style={{display: 'flex', gap: 8, marginBottom: 12}}>
+                        <button className="btn btn-primary" onClick={() => setShowNewBug(!showNewBug)}>
+                            {showNewBug ? '\u2715 Abbrechen' : '+ Neuen Bug melden'}
+                        </button>
+                    </div>
+
+                    {/* New Bug Form */}
+                    {showNewBug && (
+                        <div className="card" style={{padding: 16, marginBottom: 12}}>
+                            <h4 style={{margin: '0 0 12px'}}>{'\uD83D\uDC1B'} Neuen Bug melden</h4>
+                            <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                                <input type="text" placeholder="Titel / Kurzbeschreibung"
+                                    value={newBug.title} onChange={e => setNewBug(b => ({...b, title: e.target.value}))}
+                                    className="form-input" style={{fontSize: 14}} />
+                                <textarea placeholder="Beschreibung (was passiert, was erwartet, Schritte zum Reproduzieren)"
+                                    value={newBug.description} onChange={e => setNewBug(b => ({...b, description: e.target.value}))}
+                                    rows={4} className="form-input" style={{resize: 'vertical'}} />
+                                <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
+                                    <select value={newBug.priority} onChange={e => setNewBug(b => ({...b, priority: e.target.value}))}
+                                        className="form-input" style={{width: 120}}>
+                                        <option value="low">Niedrig</option>
+                                        <option value="normal">Normal</option>
+                                        <option value="high">Hoch</option>
+                                        <option value="critical">Kritisch</option>
+                                    </select>
+                                    <span style={{fontSize: 11, color: 'var(--text-dim)'}}>
+                                        {'\u2139\uFE0F'} Die letzten 50 Log-Einträge werden automatisch angehängt
+                                    </span>
+                                    <div style={{flex: 1}} />
+                                    <button className="btn btn-primary" onClick={createBug} disabled={!newBug.title.trim()}>
+                                        Bug erstellen
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Bug List */}
+                    {bugs.length === 0 ? (
+                        <div className="card" style={{padding: 40, textAlign: 'center', color: 'var(--text-dim)'}}>
+                            {'\uD83C\uDF89'} Keine Bugs gemeldet!
+                        </div>
+                    ) : (
+                        <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                            {bugs.map(b => (
+                                <div key={b.id} className="card" style={{padding: 12, cursor: 'pointer',
+                                    borderLeft: '3px solid ' + (prioColors[b.priority] || '#666'),
+                                    opacity: b.status === 'closed' || b.status === 'fixed' ? 0.6 : 1,
+                                }} onClick={() => setSelectedBug(selectedBug?.id === b.id ? null : b)}>
+                                    <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+                                        <span style={{
+                                            fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 600,
+                                            background: statusColors[b.status] + '22', color: statusColors[b.status],
+                                        }}>
+                                            {statusLabels[b.status] || b.status}
+                                        </span>
+                                        <span style={{
+                                            fontSize: 10, padding: '2px 6px', borderRadius: 4,
+                                            background: prioColors[b.priority] + '22', color: prioColors[b.priority],
+                                        }}>
+                                            {b.priority}
+                                        </span>
+                                        <span style={{fontWeight: 600, fontSize: 14, flex: 1}}>{b.title}</span>
+                                        <span style={{fontSize: 11, color: 'var(--text-dim)'}}>{formatTime(b.created_at)}</span>
+                                    </div>
+
+                                    {selectedBug?.id === b.id && (
+                                        <div style={{marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)'}}>
+                                            {b.description && (
+                                                <div style={{fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12, whiteSpace: 'pre-wrap'}}>
+                                                    {b.description}
+                                                </div>
+                                            )}
+                                            <div style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                                                <select value={b.status} onChange={e => { e.stopPropagation(); updateBug(b.id, { status: e.target.value }); }}
+                                                    onClick={e => e.stopPropagation()}
+                                                    className="form-input" style={{width: 130, fontSize: 12}}>
+                                                    <option value="open">Offen</option>
+                                                    <option value="in_progress">In Arbeit</option>
+                                                    <option value="fixed">Gefixt</option>
+                                                    <option value="closed">Geschlossen</option>
+                                                </select>
+                                                <select value={b.priority} onChange={e => { e.stopPropagation(); updateBug(b.id, { priority: e.target.value }); }}
+                                                    onClick={e => e.stopPropagation()}
+                                                    className="form-input" style={{width: 110, fontSize: 12}}>
+                                                    <option value="low">Niedrig</option>
+                                                    <option value="normal">Normal</option>
+                                                    <option value="high">Hoch</option>
+                                                    <option value="critical">Kritisch</option>
+                                                </select>
+                                                {b.log_snapshot?.length > 0 && (
+                                                    <button className="btn btn-sm" onClick={e => {
+                                                        e.stopPropagation();
+                                                        const text = b.log_snapshot.map(l => l.time + ' [' + l.level + '] ' + l.name + ': ' + l.msg).join('\n');
+                                                        const blob = new Blob([text], {type: 'text/plain'});
+                                                        const url = URL.createObjectURL(blob);
+                                                        const a = document.createElement('a');
+                                                        a.href = url; a.download = 'bug-' + b.id + '-logs.txt'; a.click();
+                                                    }}>
+                                                        {'\uD83D\uDCCE'} Logs ({b.log_snapshot.length})
+                                                    </button>
+                                                )}
+                                                <div style={{flex: 1}} />
+                                                <button className="btn btn-sm" style={{color: '#f44'}}
+                                                    onClick={e => { e.stopPropagation(); deleteBug(b.id); }}>
+                                                    {'\uD83D\uDDD1'} Löschen
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+
 function SettingsPage() {
     const [config, setConfig] = useState({});
     const [updateStatus, setUpdateStatus] = useState(null);
@@ -8288,6 +8598,7 @@ function App() {
             case 'integrations': return <IntegrationsPage />;
             case 'flash': return <FlashPage devices={devices} />;
             case 'presets': return <PresetsPage devices={devices} />;
+            case 'logs': return <LogsPage />;
             case 'settings': return <SettingsPage />;
             default: return <DashboardPage devices={devices} autodartsConnected={autodartsConnected} />;
         }

@@ -45,6 +45,32 @@ from esp_flasher import MODULE_VERSION as FLASHER_VERSION
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("throwsync")
 
+# ── In-Memory Log Handler (for web UI access) ──
+import collections
+
+class MemoryLogHandler(logging.Handler):
+    """Ring buffer log handler — keeps last N log entries for web access."""
+    def __init__(self, max_entries=2000):
+        super().__init__()
+        self.log_buffer = collections.deque(maxlen=max_entries)
+        self._id_counter = 0
+    
+    def emit(self, record):
+        self._id_counter += 1
+        entry = {
+            "id": self._id_counter,
+            "ts": record.created,
+            "time": self.format(record),
+            "level": record.levelname,
+            "name": record.name,
+            "msg": record.getMessage(),
+        }
+        self.log_buffer.append(entry)
+
+memory_log_handler = MemoryLogHandler(max_entries=2000)
+memory_log_handler.setFormatter(logging.Formatter('%(asctime)s'))
+logging.getLogger().addHandler(memory_log_handler)  # Capture ALL loggers
+
 # Global instances
 config_manager = ConfigManager(str(DATA_DIR / "config.json"))
 device_manager = DeviceManager(config_manager)
@@ -261,7 +287,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.3.1", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.3.2", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1951,6 +1977,103 @@ async def get_music_config():
 async def save_music_config(data: dict):
     """Save music player configuration."""
     config_manager.set("music_config", data)
+    config_manager.save()
+    return {"success": True}
+
+
+# ─── Live Logs & Bug Tracker ─────────────────────────────────────────────────
+
+@app.get("/api/logs")
+async def get_logs(level: str = "", search: str = "", limit: int = 500, after_id: int = 0):
+    """Get log entries from memory buffer. Supports filtering by level, search text, and pagination."""
+    entries = list(memory_log_handler.log_buffer)
+    
+    # Filter by after_id (for polling new entries)
+    if after_id > 0:
+        entries = [e for e in entries if e["id"] > after_id]
+    
+    # Filter by level
+    if level:
+        levels = level.upper().split(",")
+        entries = [e for e in entries if e["level"] in levels]
+    
+    # Filter by search text
+    if search:
+        search_lower = search.lower()
+        entries = [e for e in entries if search_lower in e["msg"].lower() or search_lower in e["name"].lower()]
+    
+    # Limit results (newest first)
+    entries = entries[-limit:]
+    
+    return {"entries": entries, "total": len(memory_log_handler.log_buffer)}
+
+
+@app.get("/api/logs/download")
+async def download_logs():
+    """Download full log as text file."""
+    import io
+    lines = []
+    for e in memory_log_handler.log_buffer:
+        lines.append(f"{e['time']} [{e['level']}] {e['name']}: {e['msg']}")
+    content = "\n".join(lines)
+    return Response(content=content, media_type="text/plain",
+                   headers={"Content-Disposition": "attachment; filename=throwsync-log.txt"})
+
+
+@app.get("/api/bugs")
+async def get_bugs():
+    """Get all bug reports."""
+    bugs = config_manager.get("bug_reports", [])
+    return {"bugs": bugs}
+
+
+@app.post("/api/bugs")
+async def create_bug(data: dict):
+    """Create a new bug report."""
+    import time
+    import uuid
+    bugs = config_manager.get("bug_reports", [])
+    bug = {
+        "id": str(uuid.uuid4())[:8],
+        "title": data.get("title", ""),
+        "description": data.get("description", ""),
+        "status": "open",  # open, in_progress, fixed, closed
+        "priority": data.get("priority", "normal"),  # low, normal, high, critical
+        "created_at": time.time(),
+        "updated_at": time.time(),
+        "log_snapshot": [],
+    }
+    # Attach last 50 log entries as snapshot
+    if data.get("attach_logs", True):
+        bug["log_snapshot"] = list(memory_log_handler.log_buffer)[-50:]
+    bugs.insert(0, bug)
+    config_manager.set("bug_reports", bugs)
+    config_manager.save()
+    return {"success": True, "bug": bug}
+
+
+@app.put("/api/bugs/{bug_id}")
+async def update_bug(bug_id: str, data: dict):
+    """Update a bug report (status, notes)."""
+    import time
+    bugs = config_manager.get("bug_reports", [])
+    for b in bugs:
+        if b.get("id") == bug_id:
+            for key in ("status", "priority", "title", "description"):
+                if key in data:
+                    b[key] = data[key]
+            b["updated_at"] = time.time()
+            config_manager.set("bug_reports", bugs)
+            config_manager.save()
+            return {"success": True, "bug": b}
+    raise HTTPException(404, "Bug nicht gefunden")
+
+
+@app.delete("/api/bugs/{bug_id}")
+async def delete_bug(bug_id: str):
+    bugs = config_manager.get("bug_reports", [])
+    bugs = [b for b in bugs if b.get("id") != bug_id]
+    config_manager.set("bug_reports", bugs)
     config_manager.save()
     return {"success": True}
 
