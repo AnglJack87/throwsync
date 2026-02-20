@@ -27,6 +27,52 @@ STAGING_DIR = PROJECT_ROOT / "_update_staging"
 BACKUP_DIR = PROJECT_ROOT / "_update_backup"
 VERSION_FILE = PROJECT_ROOT / "VERSION"
 
+
+def activate_venv():
+    """Auto-detect and activate venv if it exists."""
+    venv_dir = PROJECT_ROOT / "venv"
+    if not venv_dir.exists():
+        return False
+
+    # Already in venv?
+    if sys.prefix != sys.base_prefix:
+        return True
+
+    if sys.platform == "win32":
+        site_packages = venv_dir / "Lib" / "site-packages"
+        bin_dir = venv_dir / "Scripts"
+    else:
+        # Find the python version dir (e.g. python3.11, python3.13)
+        lib_dir = venv_dir / "lib"
+        if lib_dir.exists():
+            py_dirs = [d for d in lib_dir.iterdir() if d.name.startswith("python")]
+            if py_dirs:
+                site_packages = py_dirs[0] / "site-packages"
+            else:
+                return False
+        else:
+            return False
+        bin_dir = venv_dir / "bin"
+
+    if site_packages.exists():
+        # Add to sys.path so imports work
+        sp = str(site_packages)
+        if sp not in sys.path:
+            sys.path.insert(0, sp)
+
+        # Update PATH so subprocess calls (pip) use venv python
+        os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+        os.environ["VIRTUAL_ENV"] = str(venv_dir)
+
+        print(f"  Python-Umgebung: venv ({site_packages.parent.name})")
+        return True
+
+    return False
+
+
+# Activate venv BEFORE any dependency checks
+activate_venv()
+
 # Files/dirs to NEVER delete during update (user data)
 KEEP_PATHS = {
     "_update_staging", "_update_backup", ".restart", ".updating",
@@ -57,18 +103,46 @@ def check_dependencies():
         pass
 
     req_file = PROJECT_ROOT / "requirements.txt"
+    venv_dir = PROJECT_ROOT / "venv"
     print("Abhaengigkeiten fehlen, werden installiert...")
 
+    # Try direct pip install first
     for extra_args in [[], ["--break-system-packages"]]:
         try:
             subprocess.check_call(
                 [sys.executable, "-m", "pip", "install", "-r", str(req_file)] + extra_args,
-                stdout=subprocess.DEVNULL
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             print("Abhaengigkeiten installiert!")
             return True
         except subprocess.CalledProcessError:
             pass
+
+    # If pip failed (externally-managed), create venv
+    if not venv_dir.exists():
+        print("  Erstelle virtuelle Umgebung (venv)...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "venv", str(venv_dir)])
+            print("  venv erstellt!")
+        except subprocess.CalledProcessError:
+            print("FEHLER: Konnte venv nicht erstellen!")
+            print("   Bitte fuehre aus:  sudo apt install python3-venv")
+            sys.exit(1)
+
+    # Install into venv
+    if sys.platform == "win32":
+        venv_pip = venv_dir / "Scripts" / "pip"
+    else:
+        venv_pip = venv_dir / "bin" / "pip"
+
+    try:
+        subprocess.check_call([str(venv_pip), "install", "-r", str(req_file)])
+        print("  Abhaengigkeiten in venv installiert!")
+        # Activate the new venv for this session
+        activate_venv()
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"FEHLER: pip install fehlgeschlagen: {e}")
 
     print("FEHLER: Konnte Abhaengigkeiten nicht installieren!")
     print("   Bitte fuehre zuerst aus:  ./install.sh")
