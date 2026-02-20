@@ -66,6 +66,7 @@ class AutodartsBoardConnection:
         self._last_player_index: int = -1
         self._last_scores: Optional[list] = None
         self._my_player_index: int = -1     # Which player index is "me" (board owner)
+        self._is_local_match: bool = True   # Local = all players same board, no opponent_turn
 
     async def _get_keycloak_token(self) -> bool:
         """Authenticate with Autodarts Keycloak and get access token."""
@@ -298,12 +299,15 @@ class AutodartsBoardConnection:
                 # When a dart physically hits MY board, the current player MUST be me
                 if self._my_player_index < 0 and self._last_player_index >= 0:
                     self._my_player_index = self._last_player_index
-                    logger.info(f"Board '{self.name}': Spieler-Erkennung -> Ich bin Player #{self._my_player_index}")
-                    # Fire my_turn immediately since we just confirmed it's our turn
+                    logger.info(f"Board '{self.name}': Spieler-Erkennung (Dart) -> Ich bin Player #{self._my_player_index}")
+                
+                # Fire my_turn on dart hit (if local: always, if online: only if it's my index)
+                if self._is_local_match or (self._my_player_index >= 0 and self._last_player_index == self._my_player_index):
                     await self._trigger_event("my_turn")
                     await self._broadcast_display_state({
                         "type": "turn_update",
                         "is_my_turn": True,
+                        "is_local": self._is_local_match,
                         "my_player_index": self._my_player_index,
                     })
                 
@@ -389,27 +393,45 @@ class AutodartsBoardConnection:
                 self._busted = False
                 self._score_announced = False
                 self._my_player_index = -1
+                self._is_local_match = True  # Assume local until proven online
                 
                 # Log full match data for debugging
                 logger.info(f"Board '{self.name}' MATCH DATA: {json.dumps(inner)[:800]}")
                 
-                # Try detection from players array
+                # Detect local vs online + player index from players array
                 players = inner.get("players", inner.get("participants", []))
-                if isinstance(players, list):
+                board_ids_in_match = set()
+                if isinstance(players, list) and len(players) > 0:
                     for idx, p in enumerate(players):
                         if isinstance(p, dict):
                             p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
-                            if p_board and p_board == self.board_id:
-                                self._my_player_index = idx
-                                logger.info(f"Board '{self.name}': ★ Spieler aus Match-Daten erkannt → Ich bin Player #{idx} (boardId match)")
-                                break
+                            if p_board:
+                                board_ids_in_match.add(p_board)
+                                if p_board == self.board_id:
+                                    self._my_player_index = idx
+                                    logger.info(f"Board '{self.name}': Spieler aus Match-Daten erkannt -> Player #{idx} (boardId match)")
+                    
+                    # Determine local vs online:
+                    # Online = multiple different board IDs in the match
+                    # Local = all players on same board (or no board IDs at all)
+                    if len(board_ids_in_match) > 1:
+                        self._is_local_match = False
+                        logger.info(f"Board '{self.name}': ONLINE Match erkannt ({len(board_ids_in_match)} Boards: {board_ids_in_match})")
+                    else:
+                        self._is_local_match = True
+                        logger.info(f"Board '{self.name}': LOKALES Match erkannt ({len(players)} Spieler, {len(board_ids_in_match)} Board(s))")
                 
-                # Try detection from hostBoardId / creatorBoardId
-                if self._my_player_index < 0:
+                # For local matches: we are always "active" — set to player 0
+                if self._is_local_match and self._my_player_index < 0:
+                    self._my_player_index = 0
+                    logger.info(f"Board '{self.name}': Lokales Match → Ich bin Player #0 (Standard)")
+                
+                # Fallback for online: try hostBoardId
+                if not self._is_local_match and self._my_player_index < 0:
                     host_board = inner.get("hostBoardId", inner.get("creatorBoardId", ""))
                     if host_board == self.board_id:
-                        self._my_player_index = 0  # Host is typically player 0
-                        logger.info(f"Board '{self.name}': ★ Spieler aus Host-Board erkannt → Ich bin Player #0 (Host)")
+                        self._my_player_index = 0
+                        logger.info(f"Board '{self.name}': Spieler aus Host-Board erkannt -> Player #0 (Host)")
                 
                 if self._my_player_index < 0:
                     logger.info(f"Board '{self.name}': Spieler-Index noch unbekannt, wird beim ersten Wurf erkannt")
@@ -539,27 +561,40 @@ class AutodartsBoardConnection:
         # ── Detect player change → Turn indicator ──
         if player_index >= 0 and player_index != self._last_player_index:
             if self._last_player_index >= 0:
-                logger.info(f"Board '{self.name}' STATE: Spielerwechsel {self._last_player_index} → {player_index}")
-                if self._my_player_index >= 0:
+                logger.info(f"Board '{self.name}' STATE: Spielerwechsel {self._last_player_index} → {player_index} "
+                           f"(local={self._is_local_match}, my={self._my_player_index})")
+                
+                if self._is_local_match:
+                    # LOCAL: Both players are at THIS board → always my_turn (green)
+                    logger.info(f"Board '{self.name}': LOKAL → Spieler {player_index} ist dran → my_turn")
+                    await self._trigger_event("my_turn")
+                    await self._broadcast_display_state({
+                        "type": "turn_update",
+                        "is_my_turn": True,
+                        "is_local": True,
+                        "active_player_index": player_index,
+                    })
+                elif self._my_player_index >= 0:
+                    # ONLINE: Distinguish my turn vs opponent
                     is_my = player_index == self._my_player_index
                     if is_my:
-                        logger.info(f"Board '{self.name}': >>> ICH BIN DRAN → my_turn <<<")
+                        logger.info(f"Board '{self.name}': ONLINE → ICH BIN DRAN → my_turn")
                         await self._trigger_event("my_turn")
                     else:
-                        logger.info(f"Board '{self.name}': >>> GEGNER DRAN → opponent_turn <<<")
+                        logger.info(f"Board '{self.name}': ONLINE → GEGNER DRAN → opponent_turn")
                         await self._trigger_event("opponent_turn")
-                    # Always broadcast turn state for display/overlay
                     await self._broadcast_display_state({
                         "type": "turn_update",
                         "is_my_turn": is_my,
+                        "is_local": False,
                         "my_player_index": self._my_player_index,
                         "active_player_index": player_index,
                     })
                 else:
-                    # Player index not yet known — broadcast what we have
+                    # Player index not yet known
                     await self._broadcast_display_state({
                         "type": "turn_update",
-                        "is_my_turn": None,  # Unknown
+                        "is_my_turn": None,
                         "active_player_index": player_index,
                     })
             
@@ -597,6 +632,7 @@ class AutodartsBoardConnection:
                 "player_index": player_index,
                 "my_player_index": self._my_player_index,
                 "is_my_turn": is_my_turn,
+                "is_local": self._is_local_match,
                 "scores": game_scores,
             })
 

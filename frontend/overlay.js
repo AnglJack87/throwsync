@@ -26,6 +26,8 @@
         lastThrow: null,
         hudVisible: true,
         isMyTurn: null,
+        isLocal: true,
+        activePlayerIndex: -1,
     };
 
     // ── Create overlay container ──
@@ -129,10 +131,22 @@
 
     // ── Build HUD ──
     function render() {
-        const turnLabel = state.isMyTurn === true ? 'DEIN WURF' : 
-                          state.isMyTurn === false ? 'GEGNER' : '';
-        const turnColor = state.isMyTurn === true ? '#22c55e' : 
-                          state.isMyTurn === false ? '#ef4444' : '#666';
+        let turnLabel = '';
+        let turnColor = '#666';
+        if (state.isLocal) {
+            if (state.activePlayerIndex >= 0) {
+                turnLabel = 'Spieler ' + (state.activePlayerIndex + 1);
+                turnColor = '#22c55e';
+            }
+        } else {
+            if (state.isMyTurn === true) {
+                turnLabel = 'DEIN WURF';
+                turnColor = '#22c55e';
+            } else if (state.isMyTurn === false) {
+                turnLabel = 'GEGNER';
+                turnColor = '#ef4444';
+            }
+        }
         overlay.innerHTML = `
             <div id="ts-led"></div>
             <div id="ts-hud" class="${state.hudVisible ? '' : 'hidden'}">
@@ -289,16 +303,20 @@
                 if (d.type === 'throw') {
                     state.lastThrow = d.throw_text || '?';
                     state.score = d.turn_score || 0;
-                    state.isMyTurn = true; // Darts hitting = my turn
+                    state.isMyTurn = true;
                     render();
                 }
                 if (d.type === 'state_update') {
                     if (d.remaining !== undefined) state.remaining = d.remaining;
                     if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
+                    if (d.is_local !== undefined) state.isLocal = d.is_local;
+                    if (d.player_index !== undefined) state.activePlayerIndex = d.player_index;
                     render();
                 }
                 if (d.type === 'turn_update') {
                     if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
+                    if (d.is_local !== undefined) state.isLocal = d.is_local;
+                    if (d.active_player_index !== undefined) state.activePlayerIndex = d.active_player_index;
                     render();
                 }
             }

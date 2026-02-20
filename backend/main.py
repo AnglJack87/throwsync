@@ -261,7 +261,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.1.1", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -2120,6 +2120,8 @@ async def serve_lobby():
     lang = config_manager.get("language", "de")
     # Build player cards HTML
     player_html = ""
+    dart_emoji = "\U0001F3AF"
+    trophy_emoji = "\U0001F3C6"
     for p in profiles:
         stats = p.get("stats", {})
         avg = stats.get("avg_score", 0)
@@ -2127,15 +2129,19 @@ async def serve_lobby():
         co_miss = stats.get("checkouts_missed", 0)
         co_rate = f"{(co_hit/(co_hit+co_miss)*100):.0f}%" if (co_hit+co_miss) > 0 else "—"
         ach_count = len(p.get("achievements", []))
+        led_color = p.get("led_color", "#8b5cf6")
+        avatar = p.get("avatar", dart_emoji)
+        name = p.get("name", "?")
+        t180 = stats.get("total_180s", 0)
         player_html += f'''
-        <div class="player" style="border-color:{p.get('led_color','#8b5cf6')}">
-            <div class="avatar">{p.get('avatar','\U0001F3AF')}</div>
-            <div class="name">{p.get('name','?')}</div>
+        <div class="player" style="border-color:{led_color}">
+            <div class="avatar">{avatar}</div>
+            <div class="name">{name}</div>
             <div class="stats">
                 <span>Avg: <b>{avg}</b></span>
-                <span>180s: <b>{stats.get('total_180s',0)}</b></span>
+                <span>180s: <b>{t180}</b></span>
                 <span>C/O: <b>{co_rate}</b></span>
-                <span>\U0001F3C6 {ach_count}</span>
+                <span>{trophy_emoji} {ach_count}</span>
             </div>
         </div>'''
     html = f'''<!DOCTYPE html>
@@ -2306,13 +2312,7 @@ async def preview_animation(data: dict):
         t = int((step / steps) * duration)
         payload = generate_wled_payload(animation, t)
         if payload:
-            # Send to all devices
-            devices = config_manager.get("devices", [])
-            for dev in devices:
-                try:
-                    await device_manager.send_wled_json(dev.get("id", ""), payload)
-                except Exception:
-                    pass
+            await device_manager.apply_to_all(payload)
         await asyncio.sleep(duration / steps / 1000)
     return {"success": True}
 

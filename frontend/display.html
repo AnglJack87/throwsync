@@ -193,7 +193,9 @@ const state = {
     showLed: true,
     showToasts: true,
     isMyTurn: null,     // null = unknown, true/false
+    isLocal: true,      // local match = no opponent indicator
     allScores: [],      // all player scores
+    activePlayerIndex: -1,
 };
 
 let ws = null;
@@ -249,11 +251,15 @@ function handleMessage(msg) {
         if (d.type === 'state_update') {
             if (d.remaining !== undefined) state.remaining = d.remaining;
             if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
+            if (d.is_local !== undefined) state.isLocal = d.is_local;
             if (d.scores) state.allScores = d.scores;
+            if (d.player_index !== undefined) state.activePlayerIndex = d.player_index;
             render();
         }
         if (d.type === 'turn_update') {
             if (d.is_my_turn !== undefined && d.is_my_turn !== null) state.isMyTurn = d.is_my_turn;
+            if (d.is_local !== undefined) state.isLocal = d.is_local;
+            if (d.active_player_index !== undefined) state.activePlayerIndex = d.active_player_index;
             render();
         }
     }
@@ -407,10 +413,25 @@ function render() {
 
     // HUD
     if (state.showHud) {
-        const turnLabel = state.isMyTurn === true ? 'DU BIST DRAN' : 
-                          state.isMyTurn === false ? 'GEGNER' : '';
-        const turnColor = state.isMyTurn === true ? '#22c55e' : 
-                          state.isMyTurn === false ? '#ef4444' : '#666';
+        // Turn indicator: different for local vs online
+        let turnLabel = '';
+        let turnColor = '#666';
+        if (state.isLocal) {
+            // Local: show which player number is active (no "opponent" concept)
+            if (state.activePlayerIndex >= 0) {
+                turnLabel = 'Spieler ' + (state.activePlayerIndex + 1);
+                turnColor = '#22c55e'; // Always green — both players at same board
+            }
+        } else {
+            // Online: show my turn vs opponent
+            if (state.isMyTurn === true) {
+                turnLabel = 'DU BIST DRAN';
+                turnColor = '#22c55e';
+            } else if (state.isMyTurn === false) {
+                turnLabel = 'GEGNER';
+                turnColor = '#ef4444';
+            }
+        }
         html += `<div class="hud">
             <div class="hud-item">
                 <span class="conn-dot ${state.connected ? 'on' : 'off'}"></span>

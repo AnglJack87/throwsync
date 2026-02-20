@@ -162,15 +162,18 @@ def generate_wled_payload(animation: dict, time_ms: int) -> dict:
     # Interpolate brightness
     bri = int(prev_frame.get("brightness", 200) + (next_frame.get("brightness", 200) - prev_frame.get("brightness", 200)) * t)
 
-    # Interpolate colors
+    # Interpolate colors — WLED uses up to 3 colors per segment: [primary, secondary, tertiary]
     prev_colors = prev_frame.get("colors", ["#ffffff"])
     next_colors = next_frame.get("colors", ["#ffffff"])
-    led_count = animation.get("led_count", 30)
     seg_colors = []
     for i in range(min(3, max(len(prev_colors), len(next_colors)))):
         c1 = prev_colors[i % len(prev_colors)]
         c2 = next_colors[i % len(next_colors)]
         seg_colors.append(list(hex_to_rgb(interpolate_color(c1, c2, t))))
+
+    # Pad to at least 1 color
+    while len(seg_colors) < 1:
+        seg_colors.append([255, 255, 255])
 
     transition = int(next_frame.get("transition", 200) / 100)  # WLED uses 0.1s units
 
@@ -178,5 +181,9 @@ def generate_wled_payload(animation: dict, time_ms: int) -> dict:
         "on": True,
         "bri": max(0, min(255, bri)),
         "transition": transition,
-        "seg": [{"col": seg_colors}],
+        "seg": [{
+            "id": 0,
+            "fx": 0,  # Solid — CRITICAL: without this, WLED keeps its current effect
+            "col": seg_colors,
+        }],
     }
