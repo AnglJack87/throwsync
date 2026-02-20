@@ -143,6 +143,7 @@
         .status-dot.connecting { background: var(--warning); animation: pulse 1.5s infinite; }
 
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
         /* Main content */
         .main-content {
@@ -6721,19 +6722,33 @@ function LogsPage() {
 
 function SettingsPage() {
     const [config, setConfig] = useState({});
-    const [updateStatus, setUpdateStatus] = useState(null);
     const [updateCheck, setUpdateCheck] = useState(null);
     const [updateConfig, setUpdateConfigState] = useState({});
-    const [downloading, setDownloading] = useState(false);
-    const [installing, setInstalling] = useState(false);
-    const [downloadProgress, setDownloadProgress] = useState(null);
+    const [updateStep, setUpdateStep] = useState(null); // {step, message, percent}
+    const [systemInfo, setSystemInfo] = useState(null);
     const toast = useToast();
+    const { lastMessage } = useWebSocket();
 
     useEffect(() => {
         API.get('/api/config').then(data => setConfig(data || {}));
-        API.get('/api/update/status').then(data => { if (data) setUpdateStatus(data); });
+        API.get('/api/update/check').then(data => { if (data && !data.error) setUpdateCheck(data); });
         API.get('/api/update/config').then(data => { if (data) setUpdateConfigState(data); });
+        API.get('/api/update/status').then(data => { if (data) setSystemInfo(data); });
     }, []);
+
+    // Listen for update progress via WebSocket
+    useEffect(() => {
+        if (lastMessage?.type === 'update_status') {
+            setUpdateStep(lastMessage);
+            if (lastMessage.step === 'error') {
+                toast(lastMessage.message, 'error');
+            }
+            if (lastMessage.step === 'uptodate') {
+                toast(lastMessage.message, 'info');
+                setUpdateStep(null);
+            }
+        }
+    }, [lastMessage]);
 
     const save = async () => {
         await API.post('/api/config', config);
@@ -6777,35 +6792,19 @@ function SettingsPage() {
         }
     };
 
-    const doDownload = async () => {
-        setDownloading(true);
-        setDownloadProgress(0);
-
-        // Listen for progress via polling status
-        const progressInterval = setInterval(async () => {
-            // Progress comes via WebSocket, this is fallback
-        }, 500);
-
-        const result = await API.post('/api/update/download');
-        clearInterval(progressInterval);
-        setDownloading(false);
-        setDownloadProgress(null);
-
-        if (result?.success) {
-            toast(`Update v${result.staged_version} heruntergeladen!`, 'success');
-            const status = await API.get('/api/update/status');
-            if (status) setUpdateStatus(status);
-        } else {
-            toast(`Download fehlgeschlagen: ${result?.message || 'Unbekannter Fehler'}`, 'error');
+    const doOneClickUpdate = async () => {
+        setUpdateStep({step: 'starting', message: 'Update wird gestartet...'});
+        const result = await API.post('/api/update/apply');
+        if (!result?.success) {
+            toast(result?.message || 'Update konnte nicht gestartet werden', 'error');
+            setUpdateStep(null);
         }
+        // Progress comes via WebSocket from here on
     };
 
-    const doInstall = async () => {
-        if (!confirm('Update jetzt installieren?\n\nDer Server startet automatisch neu.\nDeine Konfiguration und Sounds bleiben erhalten.')) return;
-        setInstalling(true);
-        toast('Update wird installiert, Server startet neu...', 'info');
+    const doInstallStaged = async () => {
+        setUpdateStep({step: 'installing', message: 'Installiere...'});
         await API.post('/api/update/install');
-        // Server will restart — page will auto-reconnect
     };
 
     const doRollback = async () => {
@@ -6821,7 +6820,7 @@ function SettingsPage() {
 
     const settings = config.settings || {};
     const hasUpdate = updateCheck?.available;
-    const isStaged = updateStatus?.update_staged;
+    const isUpdating = updateStep && !['error', 'uptodate'].includes(updateStep.step);
     const { t, lang, setLang } = useI18n();
 
     const langOptions = [
@@ -6863,99 +6862,99 @@ function SettingsPage() {
             </div>
 
             {/* ═══ UPDATE SECTION ═══ */}
-            <div className="card" style={{marginBottom:20, borderColor: hasUpdate ? 'var(--accent)' : isStaged ? 'var(--success)' : 'var(--border)'}}>
+            <div className="card" style={{marginBottom:20, borderColor: hasUpdate ? 'var(--accent)' : 'var(--border)'}}>
                 <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
                     <span style={{fontSize:28}}>🔄</span>
                     <div style={{flex:1}}>
                         <div style={{fontWeight:700,fontSize:16}}>Software-Update</div>
                         <div style={{fontSize:13,color:'var(--text-dim)'}}>
-                            Installiert: v{updateStatus?.local_version || '?'}
-                            {updateStatus?.python_version && ` · Python ${updateStatus.python_version}`}
-                            {updateStatus?.platform && ` · ${updateStatus.platform}`}
+                            Installiert: v{updateCheck?.local_version || '?'}
                         </div>
                     </div>
-                    <button className="btn btn-sm btn-primary" onClick={doCheckUpdate}>
-                        🔍 Auf Updates prüfen
-                    </button>
+                    {!isUpdating && (
+                        <button className="btn btn-sm btn-primary" onClick={doCheckUpdate}>
+                            🔍 Prüfen
+                        </button>
+                    )}
                 </div>
 
-                {/* Update Check Result */}
-                {updateCheck && !updateCheck.error && (
+                {/* ── Live Update Progress ── */}
+                {isUpdating && (
                     <div style={{
-                        background: hasUpdate ? 'rgba(0,150,255,0.08)' : 'rgba(0,200,0,0.08)',
-                        borderRadius:8,padding:16,marginBottom:16,
+                        background:'rgba(0,150,255,0.08)',borderRadius:8,padding:16,marginBottom:16,
                     }}>
-                        {hasUpdate ? (
-                            <div>
-                                <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>
-                                    🆕 Version {updateCheck.remote_version} verfügbar!
-                                </div>
-                                {updateCheck.changelog && (
-                                    <div style={{fontSize:13,color:'var(--text-dim)',marginBottom:12,whiteSpace:'pre-line'}}>
-                                        {updateCheck.changelog.replace(/^#+ /gm, '').replace(/\*\*/g, '')}
-                                    </div>
-                                )}
-                                {updateCheck.size > 0 && (
-                                    <div style={{fontSize:12,color:'var(--text-dim)',marginBottom:12}}>
-                                        Download-Größe: {(updateCheck.size / 1024 / 1024).toFixed(1)} MB
-                                    </div>
-                                )}
-
-                                {downloading ? (
-                                    <div style={{display:'flex',alignItems:'center',gap:12}}>
-                                        <div style={{flex:1,height:8,background:'var(--border)',borderRadius:4}}>
-                                            <div style={{
-                                                width: `${downloadProgress || 0}%`,
-                                                height:'100%',background:'var(--accent)',borderRadius:4,
-                                                transition:'width 0.3s',
-                                            }}/>
-                                        </div>
-                                        <span style={{fontSize:13}}>⏳ Wird heruntergeladen...</span>
-                                    </div>
-                                ) : isStaged ? (
-                                    <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                                        <span style={{color:'var(--success)',fontWeight:600}}>✓ Update bereit</span>
-                                        <button className="btn btn-sm btn-success" onClick={doInstall} disabled={installing}>
-                                            {installing ? '⏳ Installiert...' : '🚀 Jetzt installieren & neustarten'}
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <button className="btn btn-primary" onClick={doDownload}>
-                                        📥 Update herunterladen
-                                    </button>
-                                )}
+                        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                            <div style={{
+                                width:20,height:20,border:'3px solid var(--accent)',borderTopColor:'transparent',
+                                borderRadius:'50%',animation:'spin 0.8s linear infinite',
+                            }}/>
+                            <span style={{fontWeight:600,fontSize:14}}>{updateStep?.message || 'Update läuft...'}</span>
+                        </div>
+                        {updateStep?.percent >= 0 && (
+                            <div style={{height:8,background:'var(--border)',borderRadius:4,overflow:'hidden'}}>
+                                <div style={{
+                                    width:`${updateStep.percent}%`,height:'100%',
+                                    background:'linear-gradient(90deg,var(--accent),#00c853)',
+                                    borderRadius:4,transition:'width 0.3s ease',
+                                }}/>
                             </div>
-                        ) : (
-                            <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                <span style={{fontSize:20}}>✅</span>
-                                <span style={{fontWeight:600}}>Du hast die neueste Version (v{updateCheck.local_version})</span>
+                        )}
+                        {updateStep?.step === 'restarting' && (
+                            <div style={{fontSize:12,color:'var(--text-dim)',marginTop:8}}>
+                                Seite wird automatisch neu geladen...
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* Update Error */}
-                {updateCheck?.error && (
+                {/* ── Update Available ── */}
+                {hasUpdate && !isUpdating && (
+                    <div style={{
+                        background:'rgba(0,150,255,0.08)',borderRadius:8,padding:16,marginBottom:16,
+                    }}>
+                        <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>
+                            🆕 Version {updateCheck.remote_version} verfügbar!
+                        </div>
+                        {updateCheck.changelog && (
+                            <div style={{fontSize:13,color:'var(--text-dim)',marginBottom:12,whiteSpace:'pre-line'}}>
+                                {updateCheck.changelog.replace(/^#+ /gm, '').replace(/\*\*/g, '')}
+                            </div>
+                        )}
+                        {updateCheck.size > 0 && (
+                            <div style={{fontSize:12,color:'var(--text-dim)',marginBottom:12}}>
+                                Download: {(updateCheck.size / 1024 / 1024).toFixed(1)} MB
+                            </div>
+                        )}
+                        <button className="btn btn-primary" onClick={doOneClickUpdate}
+                            style={{fontSize:15,padding:'10px 24px'}}>
+                            🚀 Jetzt updaten auf v{updateCheck.remote_version}
+                        </button>
+                        <div style={{fontSize:11,color:'var(--text-dim)',marginTop:8}}>
+                            Konfiguration & Sounds bleiben erhalten. Server startet automatisch neu.
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Up to date ── */}
+                {updateCheck && !hasUpdate && !isUpdating && !updateCheck.error && (
+                    <div style={{
+                        background:'rgba(0,200,0,0.08)',borderRadius:8,padding:12,marginBottom:16,
+                        display:'flex',alignItems:'center',gap:8,
+                    }}>
+                        <span style={{fontSize:20}}>✅</span>
+                        <span style={{fontWeight:600}}>Du hast die neueste Version (v{updateCheck.local_version})</span>
+                    </div>
+                )}
+
+                {/* ── Error ── */}
+                {updateCheck?.error && !isUpdating && (
                     <div style={{background:'rgba(255,0,0,0.08)',borderRadius:8,padding:12,marginBottom:16,fontSize:13}}>
                         ⚠️ {updateCheck.error}
                     </div>
                 )}
 
-                {/* Staged but from previous check */}
-                {isStaged && !updateCheck?.available && (
-                    <div style={{
-                        background:'rgba(0,200,0,0.08)',borderRadius:8,padding:12,marginBottom:16,
-                        display:'flex',alignItems:'center',gap:12,
-                    }}>
-                        <span>📦 Update v{updateStatus.staged_version} bereit zur Installation</span>
-                        <button className="btn btn-sm btn-success" onClick={doInstall} disabled={installing}>
-                            {installing ? '⏳ Installiert...' : '🚀 Installieren & Neustarten'}
-                        </button>
-                    </div>
-                )}
-
-                {/* Rollback option */}
-                {updateStatus?.backup_available && (
+                {/* ── Rollback ── */}
+                {!isUpdating && (
                     <div style={{fontSize:12,color:'var(--text-dim)',marginTop:8}}>
                         <button className="btn btn-sm" onClick={doRollback} style={{fontSize:11}}>
                             ↩ Zur vorherigen Version zurückkehren
@@ -6963,7 +6962,7 @@ function SettingsPage() {
                     </div>
                 )}
 
-                {/* Update Server Config */}
+                {/* ── Update Server Config ── */}
                 <details style={{marginTop:16}}>
                     <summary style={{cursor:'pointer',fontSize:13,color:'var(--text-dim)',userSelect:'none'}}>
                         ⚙️ Update-Server Konfiguration
@@ -7084,9 +7083,9 @@ function SettingsPage() {
             <div className="card">
                 <div className="card-title" style={{marginBottom: 16}}>Systeminfo</div>
                 <div style={{fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 2}}>
-                    <div>Version: {updateStatus?.local_version || '?'}</div>
-                    <div>Python: {updateStatus?.python_version || '?'}</div>
-                    <div>Plattform: {updateStatus?.platform || '?'}</div>
+                    <div>Version: {systemInfo?.local_version || '?'}</div>
+                    <div>Python: {systemInfo?.python_version || '?'}</div>
+                    <div>Plattform: {systemInfo?.platform || '?'}</div>
                     <div>Geräte: {config.devices?.length || 0}</div>
                     <div>Presets: {config.presets?.length || 0}</div>
                 </div>
@@ -7095,7 +7094,7 @@ function SettingsPage() {
                     <div style={{fontSize: 13, color: 'var(--text-dim)', marginBottom: 8}}>
                         Öffne ThrowSync auf anderen Geräten im Netzwerk:
                     </div>
-                    {(updateStatus?.network_ips || []).map(ip => (
+                    {(systemInfo?.network_ips || []).map(ip => (
                         <div key={ip} style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4}}>
                             <code style={{background: 'var(--bg-input)', padding: '3px 8px', borderRadius: 4, fontSize: 13}}>
                                 http://{ip}:8420
@@ -7106,7 +7105,7 @@ function SettingsPage() {
                             </button>
                         </div>
                     ))}
-                    {(!updateStatus?.network_ips || updateStatus.network_ips.length === 0) && (
+                    {(!systemInfo?.network_ips || systemInfo.network_ips.length === 0) && (
                         <code style={{background: 'var(--bg-input)', padding: '3px 8px', borderRadius: 4, fontSize: 13}}>
                             {window.location.origin}
                         </code>
@@ -8438,8 +8437,7 @@ function App() {
     const [autodartsConnected, setAutodartsConnected] = useState(false);
     const [boardCount, setBoardCount] = useState(0);
     const [updateInfo, setUpdateInfo] = useState(null);
-    const [updateProgress, setUpdateProgress] = useState(null);
-    const [updateRestarting, setUpdateRestarting] = useState(false);
+    const [updateStep, setUpdateStep] = useState(null); // live progress from WS
     const [appVersion, setAppVersion] = useState('');
     const { lastMessage } = useWebSocket();
 
@@ -8628,15 +8626,16 @@ function App() {
                 }
             }
 
-            // Update progress
-            if (lastMessage.type === 'update_progress') {
-                setUpdateProgress({ percent: lastMessage.percent, downloaded: lastMessage.downloaded, total: lastMessage.total });
-            }
-            if (lastMessage.type === 'update_staged') {
-                setUpdateProgress(null);
-            }
-            if (lastMessage.type === 'update_restarting') {
-                setUpdateRestarting(true);
+            // Update progress from background task
+            if (lastMessage.type === 'update_status') {
+                setUpdateStep(lastMessage);
+                // Clear banner once restarting (page will auto-reload via WS reconnect)
+                if (lastMessage.step === 'restarting') {
+                    setUpdateInfo(null);
+                }
+                if (lastMessage.step === 'uptodate' || lastMessage.step === 'error') {
+                    setTimeout(() => setUpdateStep(null), 5000);
+                }
             }
         }
     }, [lastMessage]);
@@ -8669,7 +8668,7 @@ function App() {
                 <Sidebar activePage={activePage} setActivePage={setActivePage} autodartsStatus={autodartsConnected} boardCount={boardCount} version={appVersion} />
                 <main className="main-content" style={{paddingBottom: 72}}>
                     {/* Update Restart Overlay */}
-                    {updateRestarting && (
+                    {updateStep?.step === 'restarting' && (
                         <div style={{
                             position:'fixed',inset:0,zIndex:9999,
                             background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',
@@ -8677,7 +8676,7 @@ function App() {
                             <div style={{textAlign:'center',color:'#fff'}}>
                                 <div style={{fontSize:64,marginBottom:24,animation:'pulse 1.5s infinite'}}>🔄</div>
                                 <h2 style={{marginBottom:12}}>Update wird installiert...</h2>
-                                <p style={{color:'#999',marginBottom:24}}>Server startet neu. Diese Seite aktualisiert sich automatisch.</p>
+                                <p style={{color:'#999',marginBottom:24}}>Server startet neu. Seite aktualisiert sich automatisch.</p>
                                 <div style={{width:200,height:4,background:'#333',borderRadius:2,margin:'0 auto'}}>
                                     <div style={{width:'60%',height:'100%',background:'var(--accent)',borderRadius:2,animation:'pulse 1.5s infinite'}}/>
                                 </div>
@@ -8685,8 +8684,30 @@ function App() {
                         </div>
                     )}
 
+                    {/* Update Progress Banner (downloading/installing) */}
+                    {updateStep && ['checking','downloading','installing','starting'].includes(updateStep.step) && (
+                        <div style={{
+                            background:'linear-gradient(135deg, rgba(0,150,255,0.12), rgba(0,200,100,0.08))',
+                            border:'1px solid rgba(0,150,255,0.3)',borderRadius:10,
+                            padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:12,
+                        }}>
+                            <div style={{
+                                width:20,height:20,border:'3px solid var(--accent)',borderTopColor:'transparent',
+                                borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0,
+                            }}/>
+                            <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontWeight:600,fontSize:13}}>{updateStep.message}</div>
+                                {updateStep.percent >= 0 && (
+                                    <div style={{height:4,background:'var(--border)',borderRadius:2,marginTop:6,overflow:'hidden'}}>
+                                        <div style={{width:`${updateStep.percent}%`,height:'100%',background:'var(--accent)',borderRadius:2,transition:'width 0.3s'}}/>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Update Available Banner */}
-                    {updateInfo?.available && !updateRestarting && (
+                    {updateInfo?.available && !updateStep && (
                         <div style={{
                             background:'linear-gradient(135deg, rgba(0,150,255,0.12), rgba(0,200,100,0.08))',
                             border:'1px solid rgba(0,150,255,0.3)',borderRadius:10,
@@ -8701,19 +8722,14 @@ function App() {
                                     Installiert: v{updateInfo.local_version}
                                 </div>
                             </div>
-                            {updateProgress ? (
-                                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                    <div style={{width:120,height:6,background:'var(--border)',borderRadius:3}}>
-                                        <div style={{width:`${updateProgress.percent}%`,height:'100%',background:'var(--accent)',borderRadius:3,transition:'width 0.3s'}}/>
-                                    </div>
-                                    <span style={{fontSize:12,color:'var(--text-dim)'}}>{updateProgress.percent}%</span>
-                                </div>
-                            ) : (
-                                <button className="btn btn-sm btn-primary"
-                                    onClick={() => setActivePage('settings')}>
-                                    Update installieren →
-                                </button>
-                            )}
+                            <button className="btn btn-sm btn-primary"
+                                onClick={async () => {
+                                    setUpdateStep({step:'starting',message:'Update wird gestartet...'});
+                                    const r = await API.post('/api/update/apply');
+                                    if (!r?.success) setUpdateStep(null);
+                                }}>
+                                🚀 Jetzt updaten
+                            </button>
                         </div>
                     )}
 

@@ -287,7 +287,7 @@ async def lifespan(app: FastAPI):
     config_manager.save()
 
 
-app = FastAPI(title="ThrowSync", version="2.4.1", lifespan=lifespan)
+app = FastAPI(title="ThrowSync", version="2.4.2", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1632,7 +1632,6 @@ async def test_caller_scenario(data: dict):
 async def api_update_status():
     """Get current update system status and local version."""
     status = get_update_status()
-    # Add network IPs
     import socket
     ips = []
     try:
@@ -1641,7 +1640,7 @@ async def api_update_status():
             ip = info[4][0]
             if ip and not ip.startswith('127.'):
                 ips.append(ip)
-        ips = list(dict.fromkeys(ips))  # dedupe, keep order
+        ips = list(dict.fromkeys(ips))
     except Exception:
         pass
     status["network_ips"] = ips
@@ -1653,7 +1652,6 @@ async def api_update_check():
     """Check if a newer version is available."""
     manifest_url = config_manager.get("update_manifest_url", DEFAULT_MANIFEST_URL)
     result = await check_for_update(manifest_url)
-    # Add network IPs
     import socket
     ips = []
     try:
@@ -1669,30 +1667,94 @@ async def api_update_check():
     return result
 
 
+# ── Background update task state ──
+_update_bg_task: Optional[asyncio.Task] = None
+
+async def _background_update_flow():
+    """Background task: check → download → stage → apply → restart. All in one."""
+    try:
+        # Step 1: Check manifest
+        await broadcast_ws({"type": "update_status", "step": "checking", "message": "Prüfe auf Updates..."})
+        manifest_url = config_manager.get("update_manifest_url", DEFAULT_MANIFEST_URL)
+        info = await check_for_update(manifest_url)
+        
+        if info.get("error"):
+            await broadcast_ws({"type": "update_status", "step": "error", "message": f"Fehler: {info['error']}"})
+            return
+        if not info.get("available"):
+            await broadcast_ws({"type": "update_status", "step": "uptodate", "message": f"Bereits aktuell (v{info.get('local_version', '?')})"})
+            return
+        
+        download_url = info.get("download_url")
+        remote_ver = info.get("remote_version", "?")
+        if not download_url:
+            await broadcast_ws({"type": "update_status", "step": "error", "message": "Keine Download-URL im Manifest"})
+            return
+        
+        # Step 2: Download
+        await broadcast_ws({"type": "update_status", "step": "downloading", "message": f"Lade v{remote_ver} herunter...", "percent": 0})
+        
+        async def progress_cb(pct, downloaded, total):
+            await broadcast_ws({
+                "type": "update_status", "step": "downloading",
+                "message": f"Lade v{remote_ver} herunter... {pct}%",
+                "percent": pct, "downloaded": downloaded, "total": total,
+            })
+        
+        result = await download_and_stage(download_url, progress_callback=progress_cb)
+        
+        if not result.get("success"):
+            await broadcast_ws({"type": "update_status", "step": "error", "message": f"Download fehlgeschlagen: {result.get('message', '?')}"})
+            return
+        
+        staged_ver = result.get("staged_version", remote_ver)
+        
+        # Step 3: Apply (install files)
+        await broadcast_ws({"type": "update_status", "step": "installing", "message": f"Installiere v{staged_ver}..."})
+        await asyncio.sleep(0.5)  # Let WS message arrive
+        
+        # Step 4: Trigger restart — run.py will apply staged files and restart
+        trigger_restart()
+        
+        await broadcast_ws({
+            "type": "update_status", "step": "restarting",
+            "message": f"Server startet neu mit v{staged_ver}...",
+            "version": staged_ver,
+        })
+        
+        # Give WS time to deliver
+        await asyncio.sleep(1.5)
+        
+        logger.info(f"Update to v{staged_ver} — triggering server shutdown for restart")
+        
+        # Graceful shutdown — run.py loop will apply staged update and restart
+        import signal
+        os.kill(os.getpid(), signal.SIGTERM)
+        
+    except asyncio.CancelledError:
+        await broadcast_ws({"type": "update_status", "step": "error", "message": "Update abgebrochen"})
+    except Exception as e:
+        logger.error(f"Background update failed: {e}")
+        await broadcast_ws({"type": "update_status", "step": "error", "message": f"Update fehlgeschlagen: {str(e)}"})
+
+
+@app.post("/api/update/apply")
+async def api_update_apply():
+    """One-click update: check → download → stage → restart. Non-blocking."""
+    global _update_bg_task
+    
+    # Prevent double-start
+    if _update_bg_task and not _update_bg_task.done():
+        return {"success": False, "message": "Update läuft bereits"}
+    
+    _update_bg_task = asyncio.create_task(_background_update_flow())
+    return {"success": True, "message": "Update gestartet..."}
+
+
 @app.post("/api/update/download")
 async def api_update_download():
-    """Download and stage the latest update."""
-    manifest_url = config_manager.get("update_manifest_url", DEFAULT_MANIFEST_URL)
-    info = await check_for_update(manifest_url)
-    if not info.get("available"):
-        return {"success": False, "message": "Kein Update verfügbar", "info": info}
-    download_url = info.get("download_url")
-    if not download_url:
-        raise HTTPException(400, "Keine Download-URL im Manifest")
-
-    # Progress via WebSocket
-    async def progress_cb(pct, downloaded, total):
-        await broadcast_ws({
-            "type": "update_progress",
-            "percent": pct,
-            "downloaded": downloaded,
-            "total": total,
-        })
-
-    result = await download_and_stage(download_url, progress_callback=progress_cb)
-    if result.get("success"):
-        await broadcast_ws({"type": "update_staged", "version": result.get("staged_version")})
-    return result
+    """Legacy: Download and stage (redirects to apply)."""
+    return await api_update_apply()
 
 
 @app.post("/api/update/install")
@@ -1702,24 +1764,17 @@ async def api_update_install():
     if not status.get("update_staged"):
         raise HTTPException(400, "Kein Update zum Installieren bereit")
 
-    # Signal restart
     trigger_restart()
-
     await broadcast_ws({
-        "type": "update_restarting",
-        "message": "Server startet neu mit Update...",
+        "type": "update_status", "step": "restarting",
+        "message": "Server startet neu...",
         "version": status.get("staged_version"),
     })
-
-    # Give WebSocket time to deliver the message
     await asyncio.sleep(1)
 
     logger.info("Update install requested — triggering server shutdown for restart")
-
-    # Graceful shutdown
     import signal
     os.kill(os.getpid(), signal.SIGTERM)
-
     return {"success": True, "message": "Server startet neu..."}
 
 
