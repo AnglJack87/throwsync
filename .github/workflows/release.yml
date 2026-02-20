@@ -69,6 +69,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get version
         id: version
@@ -82,39 +85,68 @@ jobs:
       - name: List artifacts
         run: find release-artifacts -type f | sort
 
-      - name: Create source ZIP (no .py files visible)
+      - name: Create source ZIP
         run: |
           mkdir -p release-artifacts/source
-          zip -r release-artifacts/source/throwsync-${{ steps.version.outputs.version }}-source.zip \
-            . -x ".git/*" "dist/*" "build/*" "__pycache__/*" "*.spec" ".github/*"
+          zip -r release-artifacts/source/throwsync-v${{ steps.version.outputs.version }}.zip \
+            . -x ".git/*" "dist/*" "build/*" "__pycache__/*" "*.spec" ".github/*" "release-artifacts/*"
+
+      - name: Get source ZIP size
+        id: zipsize
+        run: |
+          SIZE=$(stat -c%s "release-artifacts/source/throwsync-v${{ steps.version.outputs.version }}.zip" 2>/dev/null || echo "0")
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ThrowSync ${{ steps.version.outputs.version }}
-          body: |
-            ## ThrowSync ${{ steps.version.outputs.version }}
-
-            ### Downloads
-
-            | Platform | File |
-            |----------|------|
-            | 🐧 Linux (x64) | `throwsync-${{ steps.version.outputs.version }}-linux-x64` |
-            | 🪟 Windows (x64) | `throwsync-${{ steps.version.outputs.version }}-win-x64.exe` |
-            | 🍎 macOS (ARM) | `throwsync-${{ steps.version.outputs.version }}-macos-arm64` |
-
-            ### Installation
-
-            1. Binary herunterladen
-            2. In einen Ordner legen
-            3. Starten:
-               - **Linux/Mac**: `chmod +x throwsync-* && ./throwsync-*`
-               - **Windows**: Doppelklick auf `.exe`
-            4. Browser öffnet sich: `http://localhost:8420`
-
-            Config und Sounds werden automatisch neben dem Binary erstellt.
+          name: ThrowSync v${{ steps.version.outputs.version }}
+          generate_release_notes: true
           files: |
             release-artifacts/**/*
           draft: false
           prerelease: false
+
+      # ── Auto-update manifest so existing installs find the new version ──
+      - name: Update manifest
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SIZE="${{ steps.zipsize.outputs.size }}"
+          DATE=$(date +%Y-%m-%d)
+          
+          # Build changelog from git log
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${{ github.ref_name }}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s" "$PREV_TAG".."HEAD" -- | grep -v "\[skip ci\]" | head -15)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s" -10 | grep -v "\[skip ci\]")
+          fi
+          
+          # Escape newlines and quotes for JSON
+          CHANGELOG_JSON=$(echo "$CHANGELOG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()).strip('\"'))")
+          
+          cat > update-manifest.json << EOF
+          {
+              "version": "${VERSION}",
+              "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-v${VERSION}.zip",
+              "downloads": {
+                  "source": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-v${VERSION}.zip",
+                  "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-${VERSION}-linux-x64",
+                  "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-${VERSION}-win-x64.exe",
+                  "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-${VERSION}-macos-arm64"
+              },
+              "changelog": "${CHANGELOG_JSON}",
+              "size": ${SIZE},
+              "min_python": "3.8",
+              "released": "${DATE}"
+          }
+          EOF
+
+      - name: Commit & push manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add update-manifest.json
+          git diff --cached --quiet || git commit -m "chore: update manifest to v${{ steps.version.outputs.version }} [skip ci]"
+          git push origin main
