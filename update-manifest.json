@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.4/throwsync-2.4.4-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.4/throwsync-2.4.4-macos-arm64"
     },
-    "changelog": "- v2.4.4 - Ein-Klick-Update-System + Leg-Wechsel Fix + Log-Spam Fix\n- Fix: Leg-Wechsel Reset bei neuem Leg\n- Fix: Board status + STATE RAW Logs → DEBUG\n- Neu: Ein-Klick-Update mit Live-Progress\n- Neu: Update-Banner auf jeder Seite",
-    "size": 0,
+    "changelog": "- v2.4.4 - Updater-Test: Dart-Emoji im Logo",
+    "size": 4580668,
     "min_python": "3.8",
     "released": "2026-02-20"
 }
