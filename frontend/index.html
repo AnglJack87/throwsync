@@ -639,6 +639,14 @@
             .main-content { padding: 8px 8px 72px 8px; }
         }
 
+        /* LED Cards grid — responsive */
+        .led-cards-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;
+        }
+        @media (max-width: 640px) {
+            .led-cards-grid { grid-template-columns: 1fr; }
+        }
+
         /* Profile bar */
         .profile-bar {
             display: flex; gap: 8px; padding: 10px 0; margin-bottom: 16px;
@@ -1078,23 +1086,66 @@ function MiniPlayer() {
 
 function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, version }) {
     const { t } = useI18n();
-    const pages = [
-        { id: 'dashboard', icon: '\u25C8', label: t('dash.home', 'Home') },
-        { id: 'devices', icon: '\u2B21', label: t('nav.devices', 'Ger\u00e4te') },
-        { id: 'leds', icon: '\u25C6', label: 'LED' },
-        { id: 'autodarts', icon: '\u25CE', label: 'Autodarts' },
-        { id: 'events', icon: '\u26A1', label: t('nav.events', 'Events & Caller') },
-        { id: 'players', icon: '\uD83C\uDFAD', label: 'Spieler' },
-        { id: 'stats', icon: '\uD83D\uDCCA', label: t('nav.stats', 'Statistiken') },
-        { id: 'achievements', icon: '\uD83C\uDFC5', label: 'Achievements' },
-        { id: 'music', icon: '\uD83C\uDFB5', label: t('nav.music', 'Musik') },
-        { id: 'led-designer', icon: '\uD83D\uDCA1', label: 'LED Designer' },
-        { id: 'integrations', icon: '\uD83D\uDD17', label: 'Integrationen' },
-        { id: 'flash', icon: '\u21AF', label: 'Firmware' },
-        { id: 'presets', icon: '\u2605', label: 'Presets' },
-        { id: 'logs', icon: '\uD83D\uDCCB', label: 'Logs & Debug' },
-        { id: 'settings', icon: '\u2699', label: t('nav.settings', 'Einstellungen') },
+    const sections = [
+        { label: null, items: [
+            { id: 'dashboard', icon: '\u25C8', label: 'Home' },
+        ]},
+        { label: 'Spiel', items: [
+            { id: 'autodarts', icon: '\u25CE', label: 'Autodarts' },
+            { id: 'events', icon: '\u26A1', label: 'Events' },
+            { id: 'players', icon: '\uD83C\uDFAD', label: 'Spieler' },
+            { id: 'stats', icon: '\uD83D\uDCCA', label: 'Stats' },
+            { id: 'achievements', icon: '\uD83C\uDFC5', label: 'Badges' },
+        ]},
+        { label: 'LED & Audio', items: [
+            { id: 'leds', icon: '\u25C6', label: 'LED' },
+            { id: 'led-designer', icon: '\uD83D\uDCA1', label: 'Designer' },
+            { id: 'music', icon: '\uD83C\uDFB5', label: 'Musik' },
+        ]},
+        { label: 'System', items: [
+            { id: 'devices', icon: '\u2B21', label: t('nav.devices', 'Ger\u00e4te') },
+            { id: 'presets', icon: '\u2605', label: 'Presets' },
+            { id: 'integrations', icon: '\uD83D\uDD17', label: 'Integration' },
+            { id: 'flash', icon: '\u21AF', label: 'Firmware' },
+            { id: 'logs', icon: '\uD83D\uDCCB', label: 'Logs' },
+            { id: 'settings', icon: '\u2699', label: t('nav.settings', 'Einstellungen') },
+        ]},
     ];
+
+    // Flat list for mobile bottom nav (most important items only)
+    const mobileItems = [
+        { id: 'dashboard', icon: '\u25C8', label: 'Home' },
+        { id: 'autodarts', icon: '\u25CE', label: 'Autodarts' },
+        { id: 'leds', icon: '\u25C6', label: 'LED' },
+        { id: 'events', icon: '\u26A1', label: 'Events' },
+        { id: 'music', icon: '\uD83C\uDFB5', label: 'Musik' },
+        { id: 'players', icon: '\uD83C\uDFAD', label: 'Spieler' },
+        { id: 'stats', icon: '\uD83D\uDCCA', label: 'Stats' },
+        { id: 'settings', icon: '\u2699', label: 'Mehr' },
+    ];
+
+    // Detect mobile
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 640);
+    useEffect(() => {
+        const handler = () => setIsMobile(window.innerWidth <= 640);
+        window.addEventListener('resize', handler);
+        return () => window.removeEventListener('resize', handler);
+    }, []);
+
+    if (isMobile) {
+        return (
+            <div className="sidebar">
+                {mobileItems.map(p => (
+                    <div key={p.id}
+                        className={`nav-item ${activePage === p.id ? 'active' : ''}`}
+                        onClick={() => setActivePage(p.id)}>
+                        <span className="nav-icon">{p.icon}</span>
+                        <span>{p.label}</span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     return (
         <div className="sidebar">
@@ -1103,14 +1154,18 @@ function Sidebar({ activePage, setActivePage, autodartsStatus, boardCount, versi
                 <div className="version">v{version || '...'}</div>
             </div>
 
-            <div className="nav-section">Navigation</div>
-            {pages.map(p => (
-                <div key={p.id}
-                    className={`nav-item ${activePage === p.id ? 'active' : ''}`}
-                    onClick={() => setActivePage(p.id)}>
-                    <span className="nav-icon">{p.icon}</span>
-                    <span>{p.label}</span>
-                </div>
+            {sections.map((sec, si) => (
+                <React.Fragment key={si}>
+                    {sec.label && <div className="nav-section">{sec.label}</div>}
+                    {sec.items.map(p => (
+                        <div key={p.id}
+                            className={`nav-item ${activePage === p.id ? 'active' : ''}`}
+                            onClick={() => setActivePage(p.id)}>
+                            <span className="nav-icon">{p.icon}</span>
+                            <span>{p.label}</span>
+                        </div>
+                    ))}
+                </React.Fragment>
             ))}
 
             <div className="sidebar-footer">
@@ -1907,7 +1962,8 @@ function LEDControlPage({ devices }) {
     const [ledCount, setLedCount] = useState(60);
     const [selectedLeds, setSelectedLeds] = useState(new Set());
     const [segments, setSegments] = useState([]);
-    const [tab, setTab] = useState('color');
+    const [showIndividual, setShowIndividual] = useState(false);
+    const [showSegments, setShowSegments] = useState(false);
     const toast = useToast();
 
     const onlineDevices = devices.filter(d => d.online);
@@ -1937,15 +1993,13 @@ function LEDControlPage({ devices }) {
     const applyColor = async () => {
         if (!selectedDevice) return;
         const rgb = hexToRgb(color);
-        await API.post(`/api/devices/${selectedDevice}/color`, {
-            color: rgb, brightness
-        });
+        await API.post('/api/devices/' + selectedDevice + '/color', { color: rgb, brightness });
         toast('Farbe angewendet', 'success');
     };
 
     const applyEffect = async () => {
         if (!selectedDevice) return;
-        await API.post(`/api/devices/${selectedDevice}/effect`, {
+        await API.post('/api/devices/' + selectedDevice + '/effect', {
             effect_id: effectId, speed, intensity, palette
         });
         toast('Effekt angewendet', 'success');
@@ -1956,8 +2010,8 @@ function LEDControlPage({ devices }) {
         const rgb = hexToRgb(color);
         const leds = {};
         selectedLeds.forEach(i => { leds[i] = rgb; });
-        await API.post(`/api/devices/${selectedDevice}/individual`, { leds });
-        toast(`${selectedLeds.size} LEDs gesetzt`, 'success');
+        await API.post('/api/devices/' + selectedDevice + '/individual', { leds });
+        toast(selectedLeds.size + ' LEDs gesetzt', 'success');
     };
 
     const effects = [
@@ -1973,214 +2027,218 @@ function LEDControlPage({ devices }) {
         "Two Dots", "Fairytwinkle"
     ];
 
+    const quickColors = ['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff','#ffffff','#ff6600','#ff1493','#00ff7f','#6c5ce7','#ffeaa7'];
+
     return (
         <div>
             <div className="page-header">
-                <h2>LED Kontrolle</h2>
-                <p>Farben, Effekte und individuelle LEDs steuern</p>
+                <h2>{'\u25C6'} LED Steuerung</h2>
+                <p>Farben, Effekte und individuelle LED-Kontrolle</p>
             </div>
 
-            {/* Device Selector */}
-            <div className="card" style={{marginBottom: 20}}>
-                <div className="input-group" style={{marginBottom: 0}}>
-                    <label>Gerät auswählen</label>
-                    <select value={selectedDevice || ''} onChange={e => setSelectedDevice(e.target.value)}>
-                        <option value="">— Gerät wählen —</option>
+            {/* ── Top Bar: Device + Power ── */}
+            <div className="card" style={{padding: 12, marginBottom: 12}}>
+                <div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
+                    <select value={selectedDevice || ''} onChange={e => setSelectedDevice(e.target.value)}
+                        style={{flex: 1, minWidth: 180, padding: '8px 10px', background: 'var(--bg-input)',
+                            border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13}}>
+                        <option value="">{'\u2014'} Gerät wählen {'\u2014'}</option>
                         {onlineDevices.map(d => (
-                            <option key={d.id} value={d.id}>{d.name} ({d.ip}) — {d.led_count} LEDs</option>
+                            <option key={d.id} value={d.id}>{d.name} ({d.led_count} LEDs)</option>
                         ))}
                     </select>
+                    {selectedDevice && (
+                        <>
+                            <button className="btn btn-sm btn-success" style={{padding: '8px 14px'}}
+                                onClick={() => API.post('/api/devices/' + selectedDevice + '/state', {on: true})}>AN</button>
+                            <button className="btn btn-sm btn-danger" style={{padding: '8px 14px'}}
+                                onClick={() => API.post('/api/devices/' + selectedDevice + '/state', {on: false})}>AUS</button>
+                        </>
+                    )}
                 </div>
+                {selectedDevice && (
+                    <div style={{display: 'flex', alignItems: 'center', gap: 10, marginTop: 8}}>
+                        <span style={{fontSize: 16}}>{brightness > 0 ? '\u2600' : '\uD83C\uDF19'}</span>
+                        <input type="range" min="0" max="255" value={brightness}
+                            onChange={e => {
+                                setBrightness(parseInt(e.target.value));
+                                API.post('/api/devices/' + selectedDevice + '/state', { bri: parseInt(e.target.value) });
+                            }}
+                            style={{flex: 1, accentColor: 'var(--accent)'}} />
+                        <span style={{fontFamily: 'JetBrains Mono', fontSize: 12, minWidth: 36, textAlign: 'right'}}>
+                            {Math.round(brightness / 255 * 100)}%
+                        </span>
+                    </div>
+                )}
             </div>
 
-            {selectedDevice && (
+            {!selectedDevice ? (
+                <div className="card" style={{padding: 40, textAlign: 'center', color: 'var(--text-dim)'}}>
+                    {onlineDevices.length === 0 ? 'Keine WLED-Geräte online. Gehe zu Geräte um eins hinzuzufügen.'
+                        : 'Wähle oben ein Gerät aus.'}
+                </div>
+            ) : (
                 <>
-                    {/* Brightness */}
-                    <div className="card" style={{marginBottom: 20}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: 20}}>
-                            <label style={{fontSize: 13, fontWeight: 600, minWidth: 100}}>Helligkeit: {Math.round(brightness / 255 * 100)}%</label>
-                            <input type="range" min="0" max="255" value={brightness}
-                                onChange={e => {
-                                    setBrightness(parseInt(e.target.value));
-                                    API.post(`/api/devices/${selectedDevice}/state`, { bri: parseInt(e.target.value) });
-                                }}
-                                style={{flex: 1}} />
-                            <div style={{display: 'flex', gap: 8}}>
-                                <button className="btn btn-sm btn-success" onClick={() => API.post(`/api/devices/${selectedDevice}/state`, {on: true})}>AN</button>
-                                <button className="btn btn-sm btn-danger" onClick={() => API.post(`/api/devices/${selectedDevice}/state`, {on: false})}>AUS</button>
-                            </div>
-                        </div>
-                    </div>
+                    {/* ── Card Grid: Color + Effects side by side ── */}
+                    <div className="led-cards-grid">
 
-                    {/* Tabs */}
-                    <div className="tabs">
-                        {[
-                            {id: 'color', label: '🎨 Farbe'},
-                            {id: 'effect', label: '✨ Effekte'},
-                            {id: 'individual', label: '◆ Einzelne LEDs'},
-                            {id: 'segments', label: '⊞ Segmente'},
-                        ].map(t => (
-                            <div key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`}
-                                onClick={() => setTab(t.id)}>{t.label}</div>
-                        ))}
-                    </div>
-
-                    {/* Color Tab */}
-                    {tab === 'color' && (
-                        <div className="card">
-                            <div style={{display: 'flex', gap: 24, alignItems: 'start'}}>
-                                <div>
-                                    <label style={{fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 8}}>FARBE</label>
-                                    <input type="color" value={color} onChange={e => setColor(e.target.value)} />
-                                </div>
-                                <div style={{flex: 1}}>
-                                    <label style={{fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 8}}>SCHNELLFARBEN</label>
-                                    <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
-                                        {['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff','#ffffff','#ff6600','#ff1493','#00ff7f','#6c5ce7','#ffeaa7'].map(c => (
-                                            <div key={c} className="color-swatch" onClick={() => setColor(c)}
-                                                style={{background: c, borderColor: color === c ? 'white' : 'var(--border)'}} />
-                                        ))}
-                                    </div>
-                                </div>
+                        {/* Color Card */}
+                        <div className="card" style={{padding: 14}}>
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10}}>
+                                <h4 style={{margin: 0, fontSize: 14}}>{'\uD83C\uDFA8'} Farbe</h4>
+                                <button className="btn btn-sm btn-primary" onClick={applyColor} style={{fontSize: 11}}>Anwenden</button>
                             </div>
-                            <button className="btn btn-primary" style={{marginTop: 16}} onClick={applyColor}>Farbe anwenden</button>
-                        </div>
-                    )}
-
-                    {/* Effect Tab */}
-                    {tab === 'effect' && (
-                        <div className="card">
-                            <div className="grid-2">
-                                <div className="input-group">
-                                    <label>Effekt</label>
-                                    <select value={effectId} onChange={e => setEffectId(parseInt(e.target.value))}>
-                                        {effects.map((name, i) => (
-                                            <option key={i} value={i}>{i}: {name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="input-group">
-                                    <label>Palette</label>
-                                    <select value={palette} onChange={e => setPalette(parseInt(e.target.value))}>
-                                        {["Default","Random","Color 1","Colors 1&2","Gradient","Party","Cloud","Lava","Ocean","Forest","Rainbow","Rainbow Bands","Sunset","Breeze","Red & Blue","Fire","Icefire","Sakura","Aurora"].map((name, i) => (
-                                            <option key={i} value={i}>{name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                            <div style={{display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10}}>
+                                <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                                    style={{width: 48, height: 48, border: 'none', borderRadius: 8, cursor: 'pointer'}} />
+                                <div style={{
+                                    width: 48, height: 48, borderRadius: 8, background: color,
+                                    border: '2px solid var(--border)', boxShadow: '0 0 16px ' + color + '44',
+                                }} />
+                                <span style={{fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text-dim)'}}>{color}</span>
                             </div>
-                            <div className="grid-2">
-                                <div className="input-group">
-                                    <label>Geschwindigkeit: {speed}</label>
-                                    <input type="range" min="0" max="255" value={speed}
-                                        onChange={e => setSpeed(parseInt(e.target.value))} />
-                                </div>
-                                <div className="input-group">
-                                    <label>Intensität: {intensity}</label>
-                                    <input type="range" min="0" max="255" value={intensity}
-                                        onChange={e => setIntensity(parseInt(e.target.value))} />
-                                </div>
-                            </div>
-                            <div style={{display: 'flex', gap: 10}}>
-                                <div style={{marginRight: 'auto'}}>
-                                    <input type="color" value={color} onChange={e => setColor(e.target.value)}
-                                        style={{width: 40, height: 40}} />
-                                </div>
-                                <button className="btn btn-primary" onClick={applyEffect}>Effekt anwenden</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Individual LEDs Tab */}
-                    {tab === 'individual' && (
-                        <div className="card">
-                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
-                                <div>
-                                    <span style={{fontSize: 14, fontWeight: 600}}>{selectedLeds.size} LEDs ausgewählt</span>
-                                    <span style={{fontSize: 12, color: 'var(--text-dim)', marginLeft: 12}}>Klicke auf LEDs um sie auszuwählen</span>
-                                </div>
-                                <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
-                                    <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{width: 36, height: 36}} />
-                                    <button className="btn btn-sm" onClick={() => {
-                                        const all = new Set();
-                                        for (let i = 0; i < ledCount; i++) all.add(i);
-                                        setSelectedLeds(all);
-                                    }}>Alle</button>
-                                    <button className="btn btn-sm" onClick={() => setSelectedLeds(new Set())}>Keine</button>
-                                    <button className="btn btn-sm btn-primary" onClick={applyIndividual}>Anwenden</button>
-                                </div>
-                            </div>
-                            <div className="led-strip">
-                                {Array.from({length: Math.min(ledCount, 300)}, (_, i) => (
-                                    <div key={i}
-                                        className={`led-pixel ${selectedLeds.has(i) ? 'selected' : ''}`}
+                            <div style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                                {quickColors.map(c => (
+                                    <div key={c} onClick={() => setColor(c)}
                                         style={{
-                                            background: selectedLeds.has(i) ? color : '#1a1a25',
-                                            color: color
-                                        }}
-                                        onClick={() => {
-                                            const next = new Set(selectedLeds);
-                                            next.has(i) ? next.delete(i) : next.add(i);
-                                            setSelectedLeds(next);
-                                        }}
-                                        title={`LED ${i}`}
-                                    />
+                                            width: 24, height: 24, borderRadius: 6, background: c, cursor: 'pointer',
+                                            border: color === c ? '2px solid #fff' : '2px solid transparent',
+                                            boxShadow: color === c ? '0 0 8px ' + c : 'none',
+                                            transition: 'all 0.15s',
+                                        }} />
                                 ))}
                             </div>
-                            {ledCount > 300 && (
-                                <p style={{fontSize: 12, color: 'var(--text-dim)', marginTop: 8}}>
-                                    Zeige erste 300 von {ledCount} LEDs. Nutze Segmente für größere Streifen.
-                                </p>
-                            )}
                         </div>
-                    )}
 
-                    {/* Segments Tab */}
-                    {tab === 'segments' && (
-                        <div className="card">
-                            <div className="card-header">
-                                <span className="card-title">LED-Segmente</span>
-                                <button className="btn btn-sm btn-primary" onClick={() => {
+                        {/* Effects Card */}
+                        <div className="card" style={{padding: 14}}>
+                            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10}}>
+                                <h4 style={{margin: 0, fontSize: 14}}>{'\u2728'} Effekte</h4>
+                                <button className="btn btn-sm btn-primary" onClick={applyEffect} style={{fontSize: 11}}>Anwenden</button>
+                            </div>
+                            <select value={effectId} onChange={e => setEffectId(parseInt(e.target.value))}
+                                style={{width: '100%', padding: '6px 8px', marginBottom: 8, background: 'var(--bg-input)',
+                                    border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12}}>
+                                {effects.map((name, i) => (
+                                    <option key={i} value={i}>{name}</option>
+                                ))}
+                            </select>
+                            <select value={palette} onChange={e => setPalette(parseInt(e.target.value))}
+                                style={{width: '100%', padding: '6px 8px', marginBottom: 8, background: 'var(--bg-input)',
+                                    border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12}}>
+                                {["Default","Random","Color 1","Colors 1&2","Gradient","Party","Cloud","Lava","Ocean","Forest","Rainbow","Rainbow Bands","Sunset","Breeze","Red & Blue","Fire","Icefire","Sakura","Aurora"].map((name, i) => (
+                                    <option key={i} value={i}>{name}</option>
+                                ))}
+                            </select>
+                            <div style={{display: 'flex', gap: 8}}>
+                                <div style={{flex: 1}}>
+                                    <label style={{fontSize: 10, color: 'var(--text-dim)'}}>Speed: {speed}</label>
+                                    <input type="range" min="0" max="255" value={speed}
+                                        onChange={e => setSpeed(parseInt(e.target.value))}
+                                        style={{width: '100%', accentColor: 'var(--accent)'}} />
+                                </div>
+                                <div style={{flex: 1}}>
+                                    <label style={{fontSize: 10, color: 'var(--text-dim)'}}>Intensität: {intensity}</label>
+                                    <input type="range" min="0" max="255" value={intensity}
+                                        onChange={e => setIntensity(parseInt(e.target.value))}
+                                        style={{width: '100%', accentColor: 'var(--accent)'}} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Individual LEDs (collapsible) ── */}
+                    <div className="card" style={{padding: 0, marginBottom: 12, overflow: 'hidden'}}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 14px', cursor: 'pointer', userSelect: 'none',
+                        }} onClick={() => setShowIndividual(!showIndividual)}>
+                            <h4 style={{margin: 0, fontSize: 14}}>{'\u25C6'} Einzelne LEDs ({ledCount})</h4>
+                            <span style={{fontSize: 18, color: 'var(--text-dim)', transition: 'transform 0.2s',
+                                transform: showIndividual ? 'rotate(180deg)' : 'rotate(0)'}}>
+                                {'\u25BE'}
+                            </span>
+                        </div>
+                        {showIndividual && (
+                            <div style={{padding: '0 14px 14px'}}>
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8}}>
+                                    <span style={{fontSize: 12, color: 'var(--text-dim)'}}>{selectedLeds.size} ausgewählt</span>
+                                    <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+                                        <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{width: 28, height: 28, border: 'none', borderRadius: 4}} />
+                                        <button className="btn btn-sm" onClick={() => {
+                                            const all = new Set();
+                                            for (let i = 0; i < ledCount; i++) all.add(i);
+                                            setSelectedLeds(all);
+                                        }} style={{fontSize: 11}}>Alle</button>
+                                        <button className="btn btn-sm" onClick={() => setSelectedLeds(new Set())} style={{fontSize: 11}}>Keine</button>
+                                        <button className="btn btn-sm btn-primary" onClick={applyIndividual} style={{fontSize: 11}}>Setzen</button>
+                                    </div>
+                                </div>
+                                <div className="led-strip">
+                                    {Array.from({length: Math.min(ledCount, 300)}, (_, i) => (
+                                        <div key={i}
+                                            className={'led-pixel ' + (selectedLeds.has(i) ? 'selected' : '')}
+                                            style={{ background: selectedLeds.has(i) ? color : '#1a1a25', color: color }}
+                                            onClick={() => {
+                                                const next = new Set(selectedLeds);
+                                                next.has(i) ? next.delete(i) : next.add(i);
+                                                setSelectedLeds(next);
+                                            }}
+                                            title={'LED ' + i}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ── Segments (collapsible) ── */}
+                    <div className="card" style={{padding: 0, overflow: 'hidden'}}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 14px', cursor: 'pointer', userSelect: 'none',
+                        }} onClick={() => setShowSegments(!showSegments)}>
+                            <h4 style={{margin: 0, fontSize: 14}}>{'\u229E'} Segmente ({segments.length})</h4>
+                            <span style={{fontSize: 18, color: 'var(--text-dim)', transition: 'transform 0.2s',
+                                transform: showSegments ? 'rotate(180deg)' : 'rotate(0)'}}>
+                                {'\u25BE'}
+                            </span>
+                        </div>
+                        {showSegments && (
+                            <div style={{padding: '0 14px 14px'}}>
+                                <button className="btn btn-sm btn-primary" style={{marginBottom: 8}} onClick={() => {
                                     const lastEnd = segments.length > 0 ? segments[segments.length-1].stop || segments[segments.length-1].len || 0 : 0;
                                     setSegments([...segments, {start: lastEnd, stop: Math.min(lastEnd + 30, ledCount), col: [[255,255,255]]}]);
                                 }}>+ Segment</button>
+                                {segments.map((seg, i) => (
+                                    <div key={i} style={{
+                                        display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0',
+                                        borderBottom: '1px solid var(--border)'
+                                    }}>
+                                        <span style={{fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--text-dim)', minWidth: 20}}>#{i}</span>
+                                        <input type="number" value={seg.start || 0} min="0" max={ledCount} placeholder="Start"
+                                            onChange={e => { const n = [...segments]; n[i] = {...n[i], start: parseInt(e.target.value)}; setSegments(n); }}
+                                            style={{width: 60, padding: '4px 6px', background: 'var(--bg-input)', border: '1px solid var(--border)',
+                                                borderRadius: 4, color: 'var(--text-primary)', fontSize: 12}} />
+                                        <span style={{color: 'var(--text-dim)', fontSize: 12}}>{'\u2192'}</span>
+                                        <input type="number" value={seg.stop || seg.len || 0} min="0" max={ledCount} placeholder="Stop"
+                                            onChange={e => { const n = [...segments]; n[i] = {...n[i], stop: parseInt(e.target.value)}; setSegments(n); }}
+                                            style={{width: 60, padding: '4px 6px', background: 'var(--bg-input)', border: '1px solid var(--border)',
+                                                borderRadius: 4, color: 'var(--text-primary)', fontSize: 12}} />
+                                        <button className="btn btn-sm" style={{color: '#f44', fontSize: 11}} onClick={() => {
+                                            setSegments(segments.filter((_, j) => j !== i));
+                                        }}>{'\u2715'}</button>
+                                    </div>
+                                ))}
+                                {segments.length > 0 && (
+                                    <button className="btn btn-primary" style={{marginTop: 10, fontSize: 12}} onClick={async () => {
+                                        await API.post('/api/devices/' + selectedDevice + '/segments', { segments });
+                                        toast('Segmente gespeichert', 'success');
+                                    }}>Segmente speichern</button>
+                                )}
                             </div>
-                            {segments.map((seg, i) => (
-                                <div key={i} style={{
-                                    display: 'flex', gap: 12, alignItems: 'center', padding: '12px 0',
-                                    borderBottom: '1px solid var(--border)'
-                                }}>
-                                    <span style={{fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--text-dim)', minWidth: 24}}>#{i}</span>
-                                    <div className="input-group" style={{flex: 1, marginBottom: 0}}>
-                                        <label>Start</label>
-                                        <input type="number" value={seg.start || 0} min="0" max={ledCount}
-                                            onChange={e => {
-                                                const next = [...segments];
-                                                next[i] = {...next[i], start: parseInt(e.target.value)};
-                                                setSegments(next);
-                                            }} />
-                                    </div>
-                                    <div className="input-group" style={{flex: 1, marginBottom: 0}}>
-                                        <label>Stop</label>
-                                        <input type="number" value={seg.stop || seg.len || 0} min="0" max={ledCount}
-                                            onChange={e => {
-                                                const next = [...segments];
-                                                next[i] = {...next[i], stop: parseInt(e.target.value)};
-                                                setSegments(next);
-                                            }} />
-                                    </div>
-                                    <button className="btn btn-sm btn-danger" onClick={() => {
-                                        setSegments(segments.filter((_, j) => j !== i));
-                                    }}>✕</button>
-                                </div>
-                            ))}
-                            {segments.length > 0 && (
-                                <button className="btn btn-primary" style={{marginTop: 16}} onClick={async () => {
-                                    await API.post(`/api/devices/${selectedDevice}/segments`, { segments });
-                                    toast('Segmente gespeichert', 'success');
-                                }}>Segmente speichern</button>
-                            )}
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </>
             )}
         </div>

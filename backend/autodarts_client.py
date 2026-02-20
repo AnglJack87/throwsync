@@ -247,7 +247,7 @@ class AutodartsBoardConnection:
         # Log message (verbose for match state to debug data structure)
         if channel == "autodarts.matches" and ".state" in topic:
             raw_state = json.dumps(inner)[:500] if isinstance(inner, dict) else str(inner)[:500]
-            logger.info(f"Board '{self.name}' STATE RAW <<< {raw_state}")
+            logger.debug(f"Board '{self.name}' STATE RAW <<< {raw_state}")
         else:
             raw_str = json.dumps(data)[:300]
             logger.debug(f"Board '{self.name}' WS <<< {raw_str}")
@@ -602,6 +602,14 @@ class AutodartsBoardConnection:
                     await self._trigger_event("game_won")
                     await self._broadcast_caller("game_won")
         elif not game_finished:
+            if self._last_game_finished:
+                # ── New leg/game starting! Reset turn tracking ──
+                logger.info(f"Board '{self.name}' STATE: Neues Leg startet → Turn-Tracking Reset")
+                self._last_player_index = -1
+                self._turn_score = 0
+                self._darts_in_turn = 0
+                self._busted = False
+                self._score_announced = False
             self._last_game_finished = False
         
         # ── Detect BUST via score comparison ──
@@ -1276,7 +1284,7 @@ class AutodartsClient:
             bid = bc.get("board_id", "")
             conn = self.boards.get(bid)
             has_pw = bool(bc.get("account_password", ""))
-            logger.info(f"Board status {bid[:8]}...: keys={list(bc.keys())}, password_set={has_pw}")
+            logger.debug(f"Board status {bid[:8]}...: keys={list(bc.keys())}, password_set={has_pw}")
             result.append({
                 "board_id": bid,
                 "name": bc.get("name", ""),
