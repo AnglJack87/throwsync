@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.7/throwsync-2.4.7-macos-arm64"
     },
-    "changelog": "- Fix: Online-Match zwischen 2 Boards korrekt erkannt\n- Fix: Korrekte Turn-Signale (grün/rot) pro Board\n- Fix: LED grün vor erstem Dart bei Match-Start",
-    "size": 0,
+    "changelog": "- v2.4.7 - Fix: Multi-Board Online Turn-Erkennung",
+    "size": 4581632,
     "min_python": "3.8",
     "released": "2026-02-20"
 }
