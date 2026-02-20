@@ -108,40 +108,41 @@ jobs:
           draft: false
           prerelease: false
 
-      # ── Auto-update manifest so existing installs find the new version ──
       - name: Update manifest
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          SIZE="${{ steps.zipsize.outputs.size }}"
-          DATE=$(date +%Y-%m-%d)
-          
-          # Build changelog from git log
-          PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${{ github.ref_name }}$" | head -1)
-          if [ -n "$PREV_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s" "$PREV_TAG".."HEAD" -- | grep -v "\[skip ci\]" | head -15)
-          else
-            CHANGELOG=$(git log --pretty=format:"- %s" -10 | grep -v "\[skip ci\]")
-          fi
-          
-          # Escape newlines and quotes for JSON
-          CHANGELOG_JSON=$(echo "$CHANGELOG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()).strip('\"'))")
-          
-          cat > update-manifest.json << EOF
-          {
-              "version": "${VERSION}",
-              "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-v${VERSION}.zip",
-              "downloads": {
-                  "source": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-v${VERSION}.zip",
-                  "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-${VERSION}-linux-x64",
-                  "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-${VERSION}-win-x64.exe",
-                  "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v${VERSION}/throwsync-${VERSION}-macos-arm64"
+          python3 -c "
+          import json, subprocess, datetime
+
+          version = '${{ steps.version.outputs.version }}'
+          size = int('${{ steps.zipsize.outputs.size }}' or '0')
+          date = datetime.date.today().isoformat()
+
+          # Build changelog from recent commits
+          try:
+              log = subprocess.check_output(['git', 'log', '--pretty=format:- %s', '-10'], text=True)
+              changelog = '\n'.join(l for l in log.splitlines() if '[skip ci]' not in l)[:800]
+          except Exception:
+              changelog = '- v' + version
+
+          manifest = {
+              'version': version,
+              'download_url': f'https://github.com/AnglJack87/throwsync/releases/download/v{version}/throwsync-v{version}.zip',
+              'downloads': {
+                  'source': f'https://github.com/AnglJack87/throwsync/releases/download/v{version}/throwsync-v{version}.zip',
+                  'linux-x64': f'https://github.com/AnglJack87/throwsync/releases/download/v{version}/throwsync-{version}-linux-x64',
+                  'win-x64': f'https://github.com/AnglJack87/throwsync/releases/download/v{version}/throwsync-{version}-win-x64.exe',
+                  'macos-arm64': f'https://github.com/AnglJack87/throwsync/releases/download/v{version}/throwsync-{version}-macos-arm64',
               },
-              "changelog": "${CHANGELOG_JSON}",
-              "size": ${SIZE},
-              "min_python": "3.8",
-              "released": "${DATE}"
+              'changelog': changelog,
+              'size': size,
+              'min_python': '3.8',
+              'released': date,
           }
-          EOF
+
+          with open('update-manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=4, ensure_ascii=False)
+          print(f'Manifest updated to v{version}')
+          "
 
       - name: Commit & push manifest
         run: |
