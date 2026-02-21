@@ -3416,7 +3416,12 @@ function BulkEditPanel({ onApply, onCancel }) {
     const [changeDuration, setChangeDuration] = useState(false);
 
     const effect = changes.effect || {};
-    const updateEffect = (k, v) => setChanges(prev => ({...prev, effect: {...(prev.effect || {}), [k]: v}}));
+    const updateEffect = (k, v) => setChanges(prev => {
+        const eff = {...(prev.effect || {}), [k]: v};
+        // When user changes color, reset palette so col values are actually used by WLED
+        if (k === 'col') eff.pal = 0;
+        return {...prev, effect: eff};
+    });
 
     return (
         <div>
@@ -4449,7 +4454,12 @@ function LEDRingPreview({ effect, ledCount = 60, size = 280 }) {
 
 function EventEditor({ event, devices, onChange }) {
     const update = (key, value) => onChange({...event, [key]: value});
-    const updateEffect = (key, value) => onChange({...event, effect: {...(event.effect || {}), [key]: value}});
+    const updateEffect = (key, value) => {
+        const eff = {...(event.effect || {}), [key]: value};
+        // When user changes color, reset palette so col values are actually used by WLED
+        if (key === 'col') eff.pal = 0;
+        onChange({...event, effect: eff});
+    };
     const [previewLedCount, setPreviewLedCount] = React.useState(60);
 
     const col1 = event.effect?.col?.[0] || [255, 255, 255];

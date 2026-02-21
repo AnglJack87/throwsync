@@ -271,6 +271,11 @@ class AutodartsBoardConnection:
             
             # For throws: build payload from throw data
             if normalized == "throw":
+                # Safety: if a dart hits while we think we're in takeout, the board was reset
+                if self._in_takeout:
+                    logger.info(f"Board '{self.name}': Dart während Takeout → Takeout implizit beendet")
+                    self._in_takeout = False
+                
                 throw_data = inner.get("throw", {})
                 segment = throw_data.get("segment", {})
                 throw_number = inner.get("throwNumber", 0)
@@ -343,26 +348,36 @@ class AutodartsBoardConnection:
                 events = self._map_events(normalized, inner)
                 if events:
                     logger.info(f"Board '{self.name}' TRIGGER: {normalized} -> {events}")
+                elif normalized not in ("board-ready",):
+                    # Log un-mapped board events for debugging
+                    logger.debug(f"Board '{self.name}' BOARD-EVENT: {normalized}")
                 # Caller: broadcast board events (takeout, ready, etc.)
                 caller_map = {
                     "takeout-started": "takeout_start",
                     "takeout-finished": "takeout_finished",
                     "board-ready": "board_ready",
                     "board-stopped": "board_stopped",
+                    "manual-reset": "board_reset",
                 }
                 if normalized in caller_map:
                     if normalized == "takeout-started":
                         self._in_takeout = True
                     
-                    if normalized == "board-ready" and self._in_takeout:
-                        # Board is ready again but no takeout-finished came
-                        # → Board was reset during takeout (false detection)
-                        logger.info(f"Board '{self.name}': board-ready während Takeout → Takeout abgebrochen (Board-Reset)")
-                        self._in_takeout = False
-                        # Restore turn indicator LED
+                    if normalized in ("board-ready", "manual-reset"):
+                        if self._in_takeout:
+                            # Board is ready again or was manually reset,
+                            # but no takeout-finished came
+                            # → Board was reset during takeout (false detection)
+                            logger.info(f"Board '{self.name}': {normalized} während Takeout → Takeout abgebrochen (Board-Reset)")
+                            self._in_takeout = False
+                        
+                        # ALWAYS restore turn indicator LED on board-ready / manual-reset
+                        # This ensures LEDs go back to green after ANY reset
                         if self._last_player_index in self._bot_player_indices:
+                            logger.info(f"Board '{self.name}': {normalized} → opponent_turn LED (Bot dran)")
                             await self._trigger_event("opponent_turn")
                         else:
+                            logger.info(f"Board '{self.name}': {normalized} → my_turn LED (grün)")
                             await self._trigger_event("my_turn")
                     
                     if normalized == "takeout-finished":

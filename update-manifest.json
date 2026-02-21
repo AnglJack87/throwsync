@@ -1,14 +1,14 @@
 {
-    "version": "2.7.0",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.0/throwsync-v2.7.0.zip",
+    "version": "2.7.1",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.1/throwsync-v2.7.1.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.0/throwsync-v2.7.0.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.0/throwsync-2.7.0-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.0/throwsync-2.7.0-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.0/throwsync-2.7.0-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.1/throwsync-v2.7.1.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.1/throwsync-2.7.1-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.1/throwsync-2.7.1-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.1/throwsync-2.7.1-macos-arm64"
     },
-    "changelog": "- v2.7.0 - Custom Webhooks Integration",
-    "size": 4589658,
+    "changelog": "v2.7.1 — Board-Reset LED Fix + Effekt-Farben Fix\n- Fix: Board-Reset setzt LEDs jetzt IMMER auf grün (nicht nur während Takeout)\n- Fix: Manual-Reset Event wird jetzt korrekt erkannt und verarbeitet\n- Fix: Effekt-Farben stimmen jetzt mit Vorschau überein (Palette-Override entfernt)\n- Fix: Farbänderung im Editor setzt automatisch Palette auf 0\n- Fix: Migration: bestehende Configs werden automatisch korrigiert\n- Neu: Dart während Takeout beendet Takeout-Zustand als Fallback",
+    "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-21"
+    "released": "2026-02-20"
 }

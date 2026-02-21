@@ -2,7 +2,7 @@
 Default Event → LED Mappings for Autodarts.
 Standalone file with NO external dependencies — always importable.
 """
-MODULE_VERSION = "1.2.0"
+MODULE_VERSION = "1.3.0"
 
 DEFAULT_EVENT_MAPPINGS = {
     # ═══════════════════════════════════════════════════════════════════
@@ -15,12 +15,12 @@ DEFAULT_EVENT_MAPPINGS = {
     },
     "game_won": {
         "label": "Leg gewonnen (Gameshot!)", "category": "game",
-        "effect": {"fx": 44, "sx": 200, "ix": 200, "pal": 11, "col": [[255, 215, 0]], "bri": 255},
+        "effect": {"fx": 44, "sx": 200, "ix": 200, "pal": 0, "col": [[255, 215, 0], [255, 100, 0]], "bri": 255},
         "duration": 8.0, "enabled": True,
     },
     "match_won": {
         "label": "Match gewonnen (Matchshot!)", "category": "game",
-        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 6, "col": [[255, 215, 0], [255, 0, 0]], "bri": 255},
+        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 0, "col": [[255, 215, 0], [255, 0, 0]], "bri": 255},
         "duration": 12.0, "enabled": True,
     },
     "game_ended": {
@@ -112,7 +112,7 @@ DEFAULT_EVENT_MAPPINGS = {
     # ═══════════════════════════════════════════════════════════════════
     "score_180": {
         "label": "180!!!", "category": "round_score",
-        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 11, "col": [[255, 0, 0], [255, 215, 0]], "bri": 255},
+        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 0, "col": [[255, 0, 0], [255, 215, 0]], "bri": 255},
         "duration": 10.0, "enabled": True,
     },
     "score_171_179": {
@@ -186,12 +186,12 @@ DEFAULT_EVENT_MAPPINGS = {
     },
     "checkout_hit": {
         "label": "Checkout getroffen!", "category": "checkout",
-        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 6, "col": [[0, 255, 0], [255, 255, 255]], "bri": 255},
+        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 0, "col": [[0, 255, 0], [255, 255, 255]], "bri": 255},
         "duration": 8.0, "enabled": True,
     },
     "high_finish": {
         "label": "High Finish (≥ 100)", "category": "checkout",
-        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 11, "col": [[255, 215, 0], [255, 0, 0]], "bri": 255},
+        "effect": {"fx": 44, "sx": 255, "ix": 255, "pal": 0, "col": [[255, 215, 0], [255, 0, 0]], "bri": 255},
         "duration": 10.0, "enabled": True,
     },
 
@@ -257,7 +257,7 @@ DEFAULT_EVENT_MAPPINGS = {
     # ═══════════════════════════════════════════════════════════════════
     "idle": {
         "label": "Leerlauf / Wartemodus", "category": "ambient",
-        "effect": {"fx": 9, "sx": 60, "ix": 128, "pal": 11, "col": [[128, 0, 255]], "bri": 80},
+        "effect": {"fx": 9, "sx": 60, "ix": 128, "pal": 0, "col": [[128, 0, 255]], "bri": 80},
         "duration": 0, "enabled": True,
     },
 }
@@ -273,4 +273,13 @@ def get_merged_events(saved: dict) -> dict:
                 result[key].update(val)
             else:
                 result[key] = val
+    
+    # Migration v1.3.0: reset pal to 0 where col is defined
+    # Old defaults used pal=6/11 which overrode col colors in WLED,
+    # causing preview/output mismatch
+    for key, ev in result.items():
+        eff = ev.get("effect", {})
+        if eff.get("pal", 0) > 0 and eff.get("col"):
+            eff["pal"] = 0
+    
     return result
