@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-2.6.0-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-2.6.0-macos-arm64"
     },
-    "changelog": "- v2.6.0 - Music Ducking + Spotify UX Improvements",
-    "size": 4584768,
+    "changelog": "v2.6.0 — Music Ducking + Spotify UX + Custom Webhooks\n- NEU: Musik-Ducking: Automatisch leiser bei Caller/Crowd (lokal + Spotify)\n- NEU: Custom Webhooks: HTTP POST bei Game-Events (Zapier, IFTTT, Home Assistant, n8n)\n- NEU: Webhook-Events konfigurierbar: 180, Match Won, Busted, etc.\n- NEU: HMAC Signatur + Custom Headers für sichere Webhook-Verifikation\n- NEU: Spotify Setup mit Schritt-für-Schritt Anleitung\n- Fix: Spotify Token-Refresh Race-Condition\n- Fix: Crowd-Sounds lösen jetzt auch Ducking aus",
+    "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-21"
+    "released": "2026-02-20"
 }

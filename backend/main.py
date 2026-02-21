@@ -265,6 +265,10 @@ async def broadcast_caller_sound(sounds: list, event_name: str = "", data: dict 
                 discord_cfg.get("avatar_url", ""),
             ))
 
+    # ── Custom Webhooks ──
+    from webhooks import fire_webhooks
+    asyncio.create_task(fire_webhooks(config_manager, event_name, data or {}))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -2890,6 +2894,57 @@ async def discord_test():
     }
     ok = await send_discord_webhook(cfg["webhook_url"], embed, cfg.get("bot_name", "ThrowSync"), cfg.get("avatar_url", ""))
     return {"success": ok}
+
+
+# ─── Custom Webhooks ─────────────────────────────────────────────────────────
+
+@app.get("/api/webhooks/config")
+async def get_webhook_config():
+    """Get webhook configuration."""
+    from webhooks import DEFAULT_WEBHOOK_CONFIG, AVAILABLE_EVENTS
+    cfg = config_manager.get("webhook_config", DEFAULT_WEBHOOK_CONFIG)
+    return {
+        **cfg,
+        "available_events": AVAILABLE_EVENTS,
+    }
+
+
+@app.post("/api/webhooks/config")
+async def save_webhook_config(data: dict):
+    """Save webhook configuration (enabled flag + full webhook list)."""
+    from webhooks import DEFAULT_WEBHOOK_CONFIG
+    cfg = config_manager.get("webhook_config", DEFAULT_WEBHOOK_CONFIG)
+    if "enabled" in data:
+        cfg["enabled"] = data["enabled"]
+    if "webhooks" in data:
+        cfg["webhooks"] = data["webhooks"]
+    config_manager.set("webhook_config", cfg)
+    config_manager.save()
+    return {"success": True}
+
+
+@app.post("/api/webhooks/test/{webhook_id}")
+async def test_webhook(webhook_id: str):
+    """Send a test payload to a specific webhook."""
+    from webhooks import DEFAULT_WEBHOOK_CONFIG, send_webhook, build_payload
+    cfg = config_manager.get("webhook_config", DEFAULT_WEBHOOK_CONFIG)
+    wh = next((w for w in cfg.get("webhooks", []) if w.get("id") == webhook_id), None)
+    if not wh:
+        raise HTTPException(404, "Webhook nicht gefunden")
+    payload = build_payload("test", {
+        "player_name": "TestSpieler",
+        "round_score": 180,
+    })
+    payload["test"] = True
+    result = await send_webhook(wh, payload)
+    # Update status
+    wh["last_status"] = result.get("status") or result.get("error", "Error")
+    if result.get("success"):
+        import time as _t
+        wh["last_sent"] = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime())
+    config_manager.set("webhook_config", cfg)
+    config_manager.save()
+    return result
 
 
 # ─── PWA Support ──────────────────────────────────────────────────────────────

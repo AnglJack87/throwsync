@@ -5825,12 +5825,14 @@ function IntegrationsPage() {
     const [discordCfg, setDiscordCfg] = useState({});
     const [oauthInput, setOauthInput] = useState('');
     const [webhookInput, setWebhookInput] = useState('');
+    const [whConfig, setWhConfig] = useState({ enabled: false, webhooks: [], available_events: {} });
     const toast = useToast();
 
     useEffect(() => {
         API.get('/api/twitch/config').then(d => setTwitchCfg(d || {}));
         API.get('/api/twitch/status').then(d => setTwitchStatus(d || {}));
         API.get('/api/discord/config').then(d => setDiscordCfg(d || {}));
+        API.get('/api/webhooks/config').then(d => { if (d) setWhConfig(d); });
     }, []);
 
     const saveTwitch = (update) => {
@@ -5845,11 +5847,41 @@ function IntegrationsPage() {
         API.post('/api/discord/config', next);
     };
 
+    // Webhook helpers
+    const saveWebhooks = (updates = {}) => {
+        const next = { ...whConfig, ...updates };
+        setWhConfig(next);
+        API.post('/api/webhooks/config', { enabled: next.enabled, webhooks: next.webhooks });
+    };
+
+    const addWebhook = () => {
+        const id = 'wh_' + Date.now();
+        const wh = { id, name: 'Neuer Webhook', url: '', enabled: true, events: ['180', 'match_won'], headers: {}, secret: '', include_stats: false, last_status: null, last_sent: null };
+        saveWebhooks({ webhooks: [...whConfig.webhooks, wh] });
+    };
+
+    const updateWebhook = (id, update) => {
+        const webhooks = whConfig.webhooks.map(w => w.id === id ? { ...w, ...update } : w);
+        saveWebhooks({ webhooks });
+    };
+
+    const removeWebhook = (id) => {
+        saveWebhooks({ webhooks: whConfig.webhooks.filter(w => w.id !== id) });
+    };
+
+    const testWebhook = async (id) => {
+        const r = await API.post('/api/webhooks/test/' + id);
+        if (r?.success) toast('Test gesendet! Status: ' + r.status, 'success');
+        else toast('Fehler: ' + (r?.error || 'Unbekannt'), 'error');
+        // Refresh config to get updated last_status
+        API.get('/api/webhooks/config').then(d => { if (d) setWhConfig(d); });
+    };
+
     return (
         <div>
             <div className="page-header">
                 <h2>🔗 Integrationen</h2>
-                <p>Twitch, Discord und OBS Anbindung</p>
+                <p>Twitch, Discord, OBS und Custom Webhooks</p>
             </div>
 
             {/* ═══ TWITCH ═══ */}
@@ -6040,6 +6072,158 @@ function IntegrationsPage() {
                 <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-dim)', padding: 10, background: 'var(--bg)', borderRadius: 6 }}>
                     <strong>OBS Setup:</strong> Quellen → + → Browser → URL: <code>{window.location.origin}/display</code> → Breite: 1920 → Höhe: 1080 → ✓ Transparenter Hintergrund
                 </div>
+            </div>
+
+            {/* ═══ CUSTOM WEBHOOKS ═══ */}
+            <div className="card" style={{ padding: 16, marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 28 }}>🌐</span>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>Custom Webhooks</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                            HTTP POST bei Game-Events — für Zapier, IFTTT, Home Assistant, n8n, Make.com u.v.m.
+                        </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <span style={{ fontSize: 13, color: whConfig.enabled ? 'var(--accent)' : 'var(--text-dim)' }}>
+                            {whConfig.enabled ? 'Aktiv' : 'Aus'}
+                        </span>
+                        <input type="checkbox" checked={whConfig.enabled || false}
+                            onChange={e => saveWebhooks({ enabled: e.target.checked })}
+                            style={{ accentColor: 'var(--accent)', width: 18, height: 18 }} />
+                    </label>
+                </div>
+
+                {whConfig.enabled && <>
+                    {/* Webhook List */}
+                    {whConfig.webhooks.map(wh => (
+                        <div key={wh.id} style={{
+                            border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 12,
+                            background: wh.enabled ? 'var(--bg-card)' : 'rgba(0,0,0,0.2)',
+                            opacity: wh.enabled ? 1 : 0.6,
+                        }}>
+                            {/* Header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                <input type="text" value={wh.name} onChange={e => updateWebhook(wh.id, { name: e.target.value })}
+                                    style={{ flex: 1, background: 'transparent', border: 'none', color: 'var(--text)', fontWeight: 600, fontSize: 14, outline: 'none' }}
+                                    placeholder="Webhook Name" />
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 12 }}>
+                                    <input type="checkbox" checked={wh.enabled}
+                                        onChange={e => updateWebhook(wh.id, { enabled: e.target.checked })}
+                                        style={{ accentColor: 'var(--accent)' }} />
+                                    Aktiv
+                                </label>
+                                {wh.last_status && (
+                                    <span style={{
+                                        fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                                        background: typeof wh.last_status === 'number' && wh.last_status < 300 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                                        color: typeof wh.last_status === 'number' && wh.last_status < 300 ? 'var(--success)' : '#ef4444',
+                                    }}>
+                                        {wh.last_status}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* URL */}
+                            <div style={{ marginBottom: 8 }}>
+                                <input type="url" value={wh.url} onChange={e => updateWebhook(wh.id, { url: e.target.value })}
+                                    placeholder="https://hooks.zapier.com/... oder http://homeassistant:8123/api/..."
+                                    style={{ width: '100%', padding: '6px 10px', background: 'var(--bg-input)', color: 'var(--text)',
+                                        border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, fontFamily: 'JetBrains Mono, monospace' }} />
+                            </div>
+
+                            {/* Events */}
+                            <div style={{ marginBottom: 8 }}>
+                                <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4, fontWeight: 500 }}>Events:</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                    {Object.entries(whConfig.available_events || {}).map(([key, ev]) => {
+                                        const active = (wh.events || []).includes(key);
+                                        return (
+                                            <button key={key} onClick={() => {
+                                                const events = active ? wh.events.filter(e => e !== key) : [...(wh.events || []), key];
+                                                updateWebhook(wh.id, { events });
+                                            }} style={{
+                                                padding: '3px 8px', borderRadius: 999, fontSize: 11, cursor: 'pointer',
+                                                border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                                                background: active ? 'rgba(139,92,246,0.15)' : 'transparent',
+                                                color: active ? 'var(--accent)' : 'var(--text-dim)',
+                                            }}>
+                                                {ev.icon} {ev.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Advanced: Secret + Headers */}
+                            <details style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>
+                                <summary style={{ cursor: 'pointer', marginBottom: 6 }}>Erweitert</summary>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                    <div>
+                                        <label style={{ fontSize: 11, color: 'var(--text-dim)' }}>HMAC Secret (optional)</label>
+                                        <input type="text" value={wh.secret || ''} onChange={e => updateWebhook(wh.id, { secret: e.target.value })}
+                                            placeholder="Für Signatur-Verifikation"
+                                            style={{ width: '100%', padding: '4px 8px', background: 'var(--bg-input)', color: 'var(--text)',
+                                                border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }} />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: 11, color: 'var(--text-dim)' }}>Custom Header (optional)</label>
+                                        <input type="text" value={Object.entries(wh.headers || {}).map(([k,v]) => k+': '+v).join(', ')}
+                                            onChange={e => {
+                                                const headers = {};
+                                                e.target.value.split(',').forEach(h => {
+                                                    const [k, ...v] = h.split(':');
+                                                    if (k?.trim() && v.length) headers[k.trim()] = v.join(':').trim();
+                                                });
+                                                updateWebhook(wh.id, { headers });
+                                            }}
+                                            placeholder="Authorization: Bearer xxx"
+                                            style={{ width: '100%', padding: '4px 8px', background: 'var(--bg-input)', color: 'var(--text)',
+                                                border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }} />
+                                    </div>
+                                </div>
+                            </details>
+
+                            {/* Actions */}
+                            <div style={{ display: 'flex', gap: 6 }}>
+                                <button className="btn" style={{ fontSize: 11, padding: '4px 10px' }}
+                                    onClick={() => testWebhook(wh.id)} disabled={!wh.url}>
+                                    🧪 Testen
+                                </button>
+                                <button className="btn" style={{ fontSize: 11, padding: '4px 10px', color: '#ef4444' }}
+                                    onClick={() => removeWebhook(wh.id)}>
+                                    🗑 Entfernen
+                                </button>
+                                {wh.last_sent && (
+                                    <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 'auto', alignSelf: 'center' }}>
+                                        Letzter: {new Date(wh.last_sent).toLocaleString('de-DE')}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Add Webhook Button */}
+                    <button className="btn" onClick={addWebhook} style={{ width: '100%', padding: 10, borderStyle: 'dashed' }}>
+                        + Webhook hinzufügen
+                    </button>
+
+                    {/* Example Payloads */}
+                    {whConfig.webhooks.length === 0 && (
+                        <div style={{ marginTop: 12, padding: 12, background: 'var(--bg)', borderRadius: 8, fontSize: 12 }}>
+                            <div style={{ fontWeight: 600, marginBottom: 6 }}>Beispiel JSON-Payload:</div>
+                            <code style={{ fontSize: 11, lineHeight: 1.5, display: 'block', whiteSpace: 'pre', color: 'var(--text-dim)' }}>
+{`{
+  "event": "180",
+  "timestamp": "2026-02-21T12:00:00Z",
+  "source": "ThrowSync",
+  "player": "angljack",
+  "score": 180
+}`}
+                            </code>
+                        </div>
+                    )}
+                </>}
             </div>
         </div>
     );
