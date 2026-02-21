@@ -1,14 +1,14 @@
 {
-    "version": "2.5.2",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.2/throwsync-v2.5.2.zip",
+    "version": "2.5.3",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-v2.5.3.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.2/throwsync-v2.5.2.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.2/throwsync-2.5.2-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.2/throwsync-2.5.2-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.2/throwsync-2.5.2-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-v2.5.3.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-2.5.3-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-2.5.3-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-2.5.3-macos-arm64"
     },
-    "changelog": "- v2.5.2 - Fix: Auto-Neustart nach Update (SIGINT statt SIGTERM)",
-    "size": 4583393,
+    "changelog": "- Fix: LED bleibt nicht mehr auf Takeout hängen nach Board-Reset\n- Fix: Dart-Wurf oder Spielerwechsel während Takeout beendet Takeout implizit\n- Fix: Auto-Neustart nach Update (SIGINT statt SIGTERM)\n- Fix: Update-Download URL Cache-Bypass + Korrektur",
+    "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-21"
+    "released": "2026-02-20"
 }

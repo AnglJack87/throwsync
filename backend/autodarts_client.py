@@ -62,6 +62,7 @@ class AutodartsBoardConnection:
         self._busted: bool = False           # Bust flag set by match state
         self._score_announced: bool = False  # Prevents double-announcement
         self._announce_task: Optional[asyncio.Task] = None  # Delayed announcement
+        self._in_takeout: bool = False       # True between takeout_start and takeout_finished
         # ── Match state tracking ──
         self._last_player_index: int = -1
         self._last_scores: Optional[list] = None
@@ -350,7 +351,22 @@ class AutodartsBoardConnection:
                     "board-stopped": "board_stopped",
                 }
                 if normalized in caller_map:
+                    if normalized == "takeout-started":
+                        self._in_takeout = True
+                    
+                    if normalized == "board-ready" and self._in_takeout:
+                        # Board is ready again but no takeout-finished came
+                        # → Board was reset during takeout (false detection)
+                        logger.info(f"Board '{self.name}': board-ready während Takeout → Takeout abgebrochen (Board-Reset)")
+                        self._in_takeout = False
+                        # Restore turn indicator LED
+                        if self._last_player_index in self._bot_player_indices:
+                            await self._trigger_event("opponent_turn")
+                        else:
+                            await self._trigger_event("my_turn")
+                    
                     if normalized == "takeout-finished":
+                        self._in_takeout = False
                         # ── Takeout = turn definitely over ──
                         # Cancel any pending delayed announcement
                         if self._announce_task and not self._announce_task.done():
@@ -648,6 +664,7 @@ class AutodartsBoardConnection:
                 self._darts_in_turn = 0
                 self._busted = False
                 self._score_announced = False
+                self._in_takeout = False
                 # Clear bot/player data — will be re-detected from fresh state
                 old_bots = self._bot_player_indices.copy()
                 self._bot_player_indices.clear()
