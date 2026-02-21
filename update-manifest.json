@@ -1,14 +1,14 @@
 {
-    "version": "2.5.3",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-v2.5.3.zip",
+    "version": "2.5.4",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-v2.5.4.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-v2.5.3.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-2.5.3-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-2.5.3-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.3/throwsync-2.5.3-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-v2.5.4.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-macos-arm64"
     },
-    "changelog": "- v2.5.3 - Fix: Takeout-LED Reset bei Board-Reset + Auto-Neustart nach Update",
-    "size": 4583594,
+    "changelog": "- Fix: board-ready erkennt abgebrochenen Takeout nach Board-Reset\n- LED wechselt sofort zurück auf my_turn/opponent_turn\n- Fix: Auto-Neustart nach Update (SIGINT statt SIGTERM)\n- Fix: Update-Download URL Cache-Bypass + Korrektur",
+    "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-21"
+    "released": "2026-02-20"
 }
