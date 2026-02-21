@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.1/throwsync-2.5.1-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.1/throwsync-2.5.1-macos-arm64"
     },
-    "changelog": "- Fix: Update-Download nutzt jetzt immer korrekte Version-URL\n- Fix: GitHub CDN Cache-Bypass beim Manifest-Check\n- Fix: URL-Korrektur wenn Manifest-URL nicht zur Version passt",
-    "size": 0,
+    "changelog": "- v2.5.1 - Fix: Updater Download-URL Korrektur + CDN Cache-Bypass",
+    "size": 4583193,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
