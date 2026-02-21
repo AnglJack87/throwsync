@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.2/throwsync-2.5.2-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.2/throwsync-2.5.2-macos-arm64"
     },
-    "changelog": "- Fix: Auto-Neustart nach Update (Windows + Linux)\n- Fix: SIGTERM → SIGINT für cross-platform graceful shutdown\n- Fix: Server-Restart nutzt run.py Loop statt os.execv\n- Fix: Update-Download URL Cache-Bypass + Korrektur",
-    "size": 0,
+    "changelog": "- v2.5.2 - Fix: Auto-Neustart nach Update (SIGINT statt SIGTERM)",
+    "size": 4583393,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
