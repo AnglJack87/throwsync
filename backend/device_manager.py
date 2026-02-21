@@ -189,7 +189,11 @@ class DeviceManager:
         """Set WLED state on a device."""
         client = self.clients.get(device_id)
         if client:
-            return await client.set_state(state)
+            result = await client.set_state(state)
+            if not result:
+                logger.debug(f"set_device_state({device_id}): WLED returned false")
+            return result
+        logger.warning(f"set_device_state: Device '{device_id}' nicht gefunden! Verfügbar: {list(self.clients.keys())}")
         return False
 
     async def get_device_info(self, device_id: str) -> Optional[dict]:
