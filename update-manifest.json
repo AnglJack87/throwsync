@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.1/throwsync-2.7.1-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.1/throwsync-2.7.1-macos-arm64"
     },
-    "changelog": "v2.7.1 — Board-Reset LED Fix + Effekt-Farben Fix\n- Fix: Board-Reset setzt LEDs jetzt IMMER auf grün (nicht nur während Takeout)\n- Fix: Manual-Reset Event wird jetzt korrekt erkannt und verarbeitet\n- Fix: Effekt-Farben stimmen jetzt mit Vorschau überein (Palette-Override entfernt)\n- Fix: Farbänderung im Editor setzt automatisch Palette auf 0\n- Fix: Migration: bestehende Configs werden automatisch korrigiert\n- Neu: Dart während Takeout beendet Takeout-Zustand als Fallback",
-    "size": 0,
+    "changelog": "- v2.7.1 - Board-Reset LED Fix + Effect Color Fix",
+    "size": 4590217,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
