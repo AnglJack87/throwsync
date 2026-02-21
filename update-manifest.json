@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-2.6.0-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-2.6.0-macos-arm64"
     },
-    "changelog": "v2.6.0 — Music Ducking + Spotify UX\n- NEU: Musik wird automatisch leiser wenn Caller/Crowd spricht\n- NEU: Ducking funktioniert für lokale Musik UND Spotify\n- NEU: Spotify Setup-Anleitung mit Schritt-für-Schritt Guide\n- NEU: Redirect URI per Klick kopierbar\n- NEU: Ducking-Einstellung für beide Quellen sichtbar\n- Fix: Spotify Token-Refresh Race-Condition (asyncio Lock)\n- Fix: Crowd-Sounds lösen jetzt auch Ducking aus",
-    "size": 0,
+    "changelog": "- v2.6.0 - Music Ducking + Spotify UX Improvements",
+    "size": 4584768,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
