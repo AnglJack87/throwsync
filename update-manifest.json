@@ -1,14 +1,14 @@
 {
-    "version": "2.5.4",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-v2.5.4.zip",
+    "version": "2.6.0",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-v2.6.0.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-v2.5.4.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-v2.6.0.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-2.6.0-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-2.6.0-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.6.0/throwsync-2.6.0-macos-arm64"
     },
-    "changelog": "- v2.5.4 - Fix: board-ready erkennt Takeout-Abbruch nach Board-Reset",
-    "size": 4583583,
+    "changelog": "v2.6.0 — Music Ducking + Spotify UX\n- NEU: Musik wird automatisch leiser wenn Caller/Crowd spricht\n- NEU: Ducking funktioniert für lokale Musik UND Spotify\n- NEU: Spotify Setup-Anleitung mit Schritt-für-Schritt Guide\n- NEU: Redirect URI per Klick kopierbar\n- NEU: Ducking-Einstellung für beide Quellen sichtbar\n- Fix: Spotify Token-Refresh Race-Condition (asyncio Lock)\n- Fix: Crowd-Sounds lösen jetzt auch Ducking aus",
+    "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-21"
+    "released": "2026-02-20"
 }

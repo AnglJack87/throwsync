@@ -3,7 +3,7 @@ ThrowSync — Spotify Integration
 Controls Spotify playback via Web API.
 Uses Authorization Code + PKCE flow (no client secret needed).
 """
-MODULE_VERSION = "1.0.0"
+MODULE_VERSION = "1.1.0"
 
 import logging
 import time
@@ -11,8 +11,12 @@ import secrets
 import hashlib
 import base64
 import json
+import asyncio
 
 logger = logging.getLogger("throwsync")
+
+# Token refresh lock to prevent concurrent refresh attempts
+_token_lock = asyncio.Lock()
 
 DEFAULT_SPOTIFY_CONFIG = {
     "enabled": False,
@@ -138,29 +142,31 @@ async def spotify_api(method: str, endpoint: str, token: str, data: dict = None)
 
 
 async def get_valid_token(config_manager) -> str:
-    """Get a valid access token, refreshing if expired."""
-    cfg = config_manager.get("spotify_config", DEFAULT_SPOTIFY_CONFIG)
-    token = cfg.get("access_token", "")
-    expires = cfg.get("token_expires_at", 0)
-    
-    if not token:
-        return ""
-    
-    if time.time() > expires - 60:  # Refresh 60s before expiry
-        refresh = cfg.get("refresh_token", "")
-        client_id = cfg.get("client_id", "")
-        if refresh and client_id:
-            result = await refresh_access_token(client_id, refresh)
-            if "access_token" in result:
-                cfg["access_token"] = result["access_token"]
-                if result.get("refresh_token"):
-                    cfg["refresh_token"] = result["refresh_token"]
-                cfg["token_expires_at"] = time.time() + result.get("expires_in", 3600)
-                config_manager.set("spotify_config", cfg)
-                config_manager.save()
-                return result["access_token"]
-            else:
-                return ""
-        return ""
-    
-    return token
+    """Get a valid access token, refreshing if expired.
+    Uses asyncio.Lock to prevent concurrent refresh attempts."""
+    async with _token_lock:
+        cfg = config_manager.get("spotify_config", DEFAULT_SPOTIFY_CONFIG)
+        token = cfg.get("access_token", "")
+        expires = cfg.get("token_expires_at", 0)
+        
+        if not token:
+            return ""
+        
+        if time.time() > expires - 60:  # Refresh 60s before expiry
+            refresh = cfg.get("refresh_token", "")
+            client_id = cfg.get("client_id", "")
+            if refresh and client_id:
+                result = await refresh_access_token(client_id, refresh)
+                if "access_token" in result:
+                    cfg["access_token"] = result["access_token"]
+                    if result.get("refresh_token"):
+                        cfg["refresh_token"] = result["refresh_token"]
+                    cfg["token_expires_at"] = time.time() + result.get("expires_in", 3600)
+                    config_manager.set("spotify_config", cfg)
+                    config_manager.save()
+                    return result["access_token"]
+                else:
+                    return ""
+            return ""
+        
+        return token
