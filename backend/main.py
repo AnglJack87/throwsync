@@ -376,13 +376,14 @@ async def reboot_device(device_id: str):
 
 @app.post("/api/server/restart")
 async def restart_server():
-    """Restart the ThrowSync server process."""
-    import sys, os
+    """Restart the ThrowSync server process via run.py loop."""
     logger.info("Server-Neustart angefordert...")
     
     async def _delayed_restart():
         await asyncio.sleep(1)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        trigger_restart("restart")
+        import signal
+        signal.raise_signal(signal.SIGINT)
     
     asyncio.create_task(_delayed_restart())
     return {"success": True, "message": "Server startet neu..."}
@@ -1758,9 +1759,11 @@ async def _background_update_flow():
         
         logger.info(f"Update to v{staged_ver} — triggering server shutdown for restart")
         
-        # Graceful shutdown — run.py loop will apply staged update and restart
+        # Cross-platform graceful shutdown: SIGINT triggers KeyboardInterrupt
+        # which uvicorn handles cleanly, then run.py's loop picks up .restart flag
+        # (SIGTERM on Windows calls TerminateProcess → kills entire process including run.py loop)
         import signal
-        os.kill(os.getpid(), signal.SIGTERM)
+        signal.raise_signal(signal.SIGINT)
         
     except asyncio.CancelledError:
         await broadcast_ws({"type": "update_status", "step": "error", "message": "Update abgebrochen"})
@@ -1805,7 +1808,7 @@ async def api_update_install():
 
     logger.info("Update install requested — triggering server shutdown for restart")
     import signal
-    os.kill(os.getpid(), signal.SIGTERM)
+    signal.raise_signal(signal.SIGINT)
     return {"success": True, "message": "Server startet neu..."}
 
 
@@ -1817,7 +1820,7 @@ async def api_update_rollback():
         trigger_restart()
         await asyncio.sleep(0.5)
         import signal
-        os.kill(os.getpid(), signal.SIGTERM)
+        signal.raise_signal(signal.SIGINT)
     return result
 
 

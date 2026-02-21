@@ -436,10 +436,10 @@ def rollback_update() -> dict:
         return {"success": False, "message": f"Rollback fehlgeschlagen: {str(e)}"}
 
 
-def trigger_restart():
+def trigger_restart(reason: str = "update"):
     """Write restart flag so run.py loop picks it up."""
-    RESTART_FLAG.write_text("update")
-    logger.info("Restart flag written — server will restart")
+    RESTART_FLAG.write_text(reason)
+    logger.info(f"Restart flag written (reason: {reason}) — server will restart")
 
 
 def get_update_status() -> dict:
