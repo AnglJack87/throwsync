@@ -1,14 +1,14 @@
 {
     "version": "2.5.0",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-v2.4.8.zip",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-v2.5.0.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-v2.4.8.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-v2.5.0.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-2.5.0-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-2.5.0-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-2.5.0-macos-arm64"
     },
-    "changelog": "- Fix: Bot-Erkennung zwischen Legs (Indices wurden nie gelöscht)\n- Fix: dart_1 Event feuert jetzt (dartIndex=0 war falsy in Python)\n- Fix: Spielernamen werden pro Leg aktualisiert\n- Fix: Device-ID bleibt stabil bei gleicher IP\n- Fix: Board-Zuordnung wird bei Device-Löschung aufgeräumt\n- Neu: WLED Neustart-Button (Reboot)\n- Neu: Server Neustart-Button\n- Besseres Dart-Logging mit Spielername und Events",
-    "size": 0,
+    "changelog": "- v2.5.0 - Fix: Leg-Reset Bot/Spieler, dart_1 Event, Device-ID Stabilität + Restart-Buttons",
+    "size": 4583070,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
