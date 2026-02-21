@@ -367,6 +367,27 @@ async def identify_device(device_id: str):
     return {"success": success}
 
 
+@app.post("/api/devices/{device_id}/reboot")
+async def reboot_device(device_id: str):
+    """Reboot a WLED device."""
+    success = await device_manager.reboot_device(device_id)
+    return {"success": success}
+
+
+@app.post("/api/server/restart")
+async def restart_server():
+    """Restart the ThrowSync server process."""
+    import sys, os
+    logger.info("Server-Neustart angefordert...")
+    
+    async def _delayed_restart():
+        await asyncio.sleep(1)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    
+    asyncio.create_task(_delayed_restart())
+    return {"success": True, "message": "Server startet neu..."}
+
+
 @app.get("/api/devices/{device_id}/state")
 async def get_device_state(device_id: str):
     """Get full WLED state of a device."""

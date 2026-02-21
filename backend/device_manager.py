@@ -80,18 +80,33 @@ class DeviceManager:
 
     async def add_device(self, ip: str, name: str = "", led_count: int = 0) -> Optional[dict]:
         """Add a new device. Returns device info if successful."""
+        # Check if device with same IP already exists → reuse ID
+        existing_id = None
+        devices = self.config.get("devices", [])
+        for d in devices:
+            if d.get("ip") == ip:
+                existing_id = d.get("id")
+                break
+
         client = WLEDClient(ip)
         info = await client.get_info()
         if info is None:
             return None
 
-        device_id = str(uuid.uuid4())[:8]
+        device_id = existing_id or str(uuid.uuid4())[:8]
         device_name = name or info.get("name", f"WLED-{ip}")
         actual_led_count = led_count or info.get("leds", {}).get("count", 0)
 
         # If user specified LED count, push it to WLED
         if led_count > 0:
             await client.set_state({"seg": [{"start": 0, "stop": led_count}]})
+
+        # Close old client if reusing
+        if existing_id and existing_id in self.clients:
+            try:
+                await self.clients[existing_id].close()
+            except Exception:
+                pass
 
         self.clients[device_id] = client
         self._status_cache[device_id] = {
@@ -101,14 +116,20 @@ class DeviceManager:
             "last_seen": datetime.utcnow().isoformat(),
         }
 
-        # Save to config
-        devices = self.config.get("devices", [])
-        devices.append({
-            "id": device_id,
-            "ip": ip,
-            "name": device_name,
-            "led_count": actual_led_count,
-        })
+        # Save to config (update existing or append new)
+        if existing_id:
+            for d in devices:
+                if d.get("id") == existing_id:
+                    d["name"] = device_name
+                    d["led_count"] = actual_led_count
+                    break
+        else:
+            devices.append({
+                "id": device_id,
+                "ip": ip,
+                "name": device_name,
+                "led_count": actual_led_count,
+            })
         self.config.set("devices", devices)
         self.config.save()
 
@@ -142,7 +163,7 @@ class DeviceManager:
         return False
 
     def remove_device(self, device_id: str) -> bool:
-        """Remove a device from management."""
+        """Remove a device from management and clean up board assignments."""
         if device_id in self.clients:
             del self.clients[device_id]
             self._status_cache.pop(device_id, None)
@@ -150,6 +171,16 @@ class DeviceManager:
             devices = self.config.get("devices", [])
             devices = [d for d in devices if d.get("id") != device_id]
             self.config.set("devices", devices)
+
+            # Clean up board assignments that reference this device
+            boards = self.config.get("boards", [])
+            for board in boards:
+                assigned = board.get("assigned_devices", [])
+                if device_id in assigned:
+                    assigned.remove(device_id)
+                    logger.info(f"Device {device_id} aus Board '{board.get('name', '?')}' entfernt")
+            self.config.set("boards", boards)
+
             self.config.save()
             return True
         return False
@@ -208,6 +239,14 @@ class DeviceManager:
         client = self.clients.get(device_id)
         if client:
             return await client.identify()
+        return False
+
+    async def reboot_device(self, device_id: str) -> bool:
+        """Reboot a WLED device."""
+        client = self.clients.get(device_id)
+        if client:
+            return await client.reboot()
+        logger.warning(f"reboot_device: Device '{device_id}' nicht gefunden!")
         return False
 
     async def get_segments(self, device_id: str) -> list:

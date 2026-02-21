@@ -285,8 +285,16 @@ class AutodartsBoardConnection:
                 self._turn_score += dart_score
                 self._darts_in_turn += 1
                 events = self._map_events(normalized, payload)
-                logger.info(f"Board '{self.name}' DART #{self._darts_in_turn}: "
-                           f"{segment.get('name','')} = {dart_score}pts (turn total: {self._turn_score})")
+                
+                # Rich dart logging with player context
+                player_name = ""
+                if self._last_player_index >= 0 and self._last_player_index < len(self._match_player_names):
+                    player_name = self._match_player_names[self._last_player_index]
+                logger.info(f"Board '{self.name}' 🎯 DART #{self._darts_in_turn}: "
+                           f"{segment.get('name','')} = {dart_score}pts "
+                           f"(turn: {self._turn_score}) "
+                           f"[Spieler: '{player_name}' idx={self._last_player_index}] "
+                           f"→ Events: {events}")
                 # Caller: broadcast single dart sound
                 await self._broadcast_caller("throw", payload)
                 # Broadcast throw data for display overlay
@@ -552,21 +560,26 @@ class AutodartsBoardConnection:
             
             for idx, p in enumerate(players):
                 if isinstance(p, dict):
-                    # Extract names if we don't have them yet
+                    # Always extract/update player names from state
+                    p_name = (p.get("name") or p.get("displayName") or 
+                             p.get("userName") or p.get("username") or
+                             p.get("userId") or p.get("id") or f"Player {idx+1}")
+                    p_name = str(p_name)
                     if idx >= len(self._match_player_names):
-                        p_name = (p.get("name") or p.get("displayName") or 
-                                 p.get("userName") or p.get("username") or
-                                 p.get("userId") or p.get("id") or f"Player {idx+1}")
-                        self._match_player_names.append(str(p_name))
+                        self._match_player_names.append(p_name)
                         logger.info(f"Board '{self.name}': Spieler #{idx} Name aus State: '{p_name}'")
+                    elif self._match_player_names[idx] != p_name:
+                        old_name = self._match_player_names[idx]
+                        self._match_player_names[idx] = p_name
+                        logger.info(f"Board '{self.name}': Spieler #{idx} Name aktualisiert: '{old_name}' → '{p_name}'")
                     
-                    # Detect bots from state data
+                    # Detect bots from state data (re-detect each leg)
                     if idx not in self._bot_player_indices:
                         is_bot = (p.get("cpuPPR") is not None or p.get("cpu") is not None
                                  or p.get("isBot") or p.get("isCpu") or p.get("bot"))
                         if is_bot:
                             self._bot_player_indices.add(idx)
-                            logger.info(f"Board '{self.name}': Spieler #{idx} als BOT erkannt (aus State)")
+                            logger.info(f"Board '{self.name}': Spieler #{idx} '{p_name}' als BOT erkannt (aus State)")
                     
                     # Collect board IDs from ALL players
                     p_board = p.get("boardId", p.get("board_id", p.get("board", "")))
@@ -635,6 +648,12 @@ class AutodartsBoardConnection:
                 self._darts_in_turn = 0
                 self._busted = False
                 self._score_announced = False
+                # Clear bot/player data — will be re-detected from fresh state
+                old_bots = self._bot_player_indices.copy()
+                self._bot_player_indices.clear()
+                self._match_player_names.clear()
+                self._my_player_index = -1
+                logger.info(f"Board '{self.name}' STATE: Bot/Spieler-Daten zurückgesetzt (alte Bots: {old_bots})")
             self._last_game_finished = False
         
         # ── Detect BUST via score comparison ──
@@ -881,7 +900,9 @@ class AutodartsBoardConnection:
             multiplier = segment.get("multiplier", 1) or payload.get("multiplier", 1)
             ring = segment.get("bed", "") or payload.get("ring", "")
             total = payload.get("points", 0) or payload.get("score", 0)
-            dart_index = payload.get("dartIndex", None) or payload.get("throwIndex", None)
+            dart_index = payload.get("dartIndex", None)
+            if dart_index is None:
+                dart_index = payload.get("throwIndex", None)
 
             # 1) Most specific: Bullseye/Bull/Miss or specific number (throw_t20)
             # 2) General segment type (throw_triple)

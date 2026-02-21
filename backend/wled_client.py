@@ -238,3 +238,11 @@ class WLEDClient:
     async def load_preset(self, slot: int) -> bool:
         """Load a preset on the device."""
         return await self.set_state({"ps": slot})
+
+    async def reboot(self) -> bool:
+        """Reboot the WLED device."""
+        logger.info(f"WLED {self.ip}: Neustart wird ausgelöst...")
+        result = await self._post("/json/state", {"rb": True})
+        if result:
+            await self.close()  # Close session, device will be offline briefly
+        return result
