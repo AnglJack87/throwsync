@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.9/throwsync-2.4.9-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.9/throwsync-2.4.9-macos-arm64"
     },
-    "changelog": "- Debug: WLED set_device_state Logging für Fehlersuche\n- Bessere Fehlermeldung bei fehlender Device-Zuordnung",
-    "size": 0,
+    "changelog": "- v2.4.9 - Debug: WLED Device-State Logging",
+    "size": 4582058,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
