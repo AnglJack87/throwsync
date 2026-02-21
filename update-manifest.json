@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.0/throwsync-2.7.0-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.7.0/throwsync-2.7.0-macos-arm64"
     },
-    "changelog": "v2.7.0 — Custom Webhooks\n- NEU: HTTP POST bei Game-Events (Zapier, IFTTT, Home Assistant, n8n, Make.com)\n- NEU: 10 konfigurierbare Events (180, Match Won, Busted, High Score, etc.)\n- NEU: Mehrere Webhooks parallel möglich\n- NEU: HMAC-SHA256 Signatur + Custom Headers\n- NEU: Test-Button mit Live-Status pro Webhook\n- NEU: Rate-Limiting (1/sec pro URL)",
-    "size": 0,
+    "changelog": "- v2.7.0 - Custom Webhooks Integration",
+    "size": 4589658,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
