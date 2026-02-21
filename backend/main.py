@@ -1713,6 +1713,15 @@ async def _background_update_flow():
             await broadcast_ws({"type": "update_status", "step": "error", "message": "Keine Download-URL im Manifest"})
             return
         
+        # Verify download URL matches remote version
+        if remote_ver != "?" and remote_ver not in download_url:
+            logger.warning(f"Download-URL passt nicht zur Version! URL={download_url}, Version={remote_ver}")
+            # Fix URL to match version
+            download_url = f"https://github.com/AnglJack87/throwsync/releases/download/v{remote_ver}/throwsync-v{remote_ver}.zip"
+            logger.info(f"URL korrigiert: {download_url}")
+        
+        logger.info(f"Update v{remote_ver} Download: {download_url}")
+        
         # Step 2: Download
         await broadcast_ws({"type": "update_status", "step": "downloading", "message": f"Lade v{remote_ver} herunter...", "percent": 0})
         

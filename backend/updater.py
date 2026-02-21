@@ -103,6 +103,10 @@ async def check_for_update(manifest_url: str = None) -> dict:
     Returns: {available, local_version, remote_version, download_url, changelog, size}
     """
     url = manifest_url or DEFAULT_MANIFEST_URL
+    # Add cache-buster to bypass GitHub CDN cache
+    import time
+    cache_bust = f"{'&' if '?' in url else '?'}t={int(time.time())}"
+    url_with_bust = url + cache_bust
     local_ver = get_local_version()
     result = {
         "available": False,
@@ -123,7 +127,7 @@ async def check_for_update(manifest_url: str = None) -> dict:
             try:
                 timeout = aiohttp.ClientTimeout(total=15)
                 async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.get(url) as resp:
+                    async with session.get(url_with_bust) as resp:
                         if resp.status == 200:
                             manifest = await resp.json(content_type=None)
                         else:
@@ -133,7 +137,7 @@ async def check_for_update(manifest_url: str = None) -> dict:
         
         # Fallback to urllib (works better on some Linux systems)
         if manifest is None:
-            manifest = await asyncio.get_event_loop().run_in_executor(None, _urllib_get_json, url)
+            manifest = await asyncio.get_event_loop().run_in_executor(None, _urllib_get_json, url_with_bust)
     
     except asyncio.TimeoutError:
         result["error"] = "Timeout beim Abrufen des Manifests"

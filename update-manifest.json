@@ -1,14 +1,14 @@
 {
-    "version": "2.5.0",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-v2.5.0.zip",
+    "version": "2.5.1",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.1/throwsync-v2.5.1.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-v2.5.0.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-2.5.0-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-2.5.0-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.0/throwsync-2.5.0-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.1/throwsync-v2.5.1.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.1/throwsync-2.5.1-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.1/throwsync-2.5.1-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.1/throwsync-2.5.1-macos-arm64"
     },
-    "changelog": "- v2.5.0 - Fix: Leg-Reset Bot/Spieler, dart_1 Event, Device-ID Stabilität + Restart-Buttons",
-    "size": 4583070,
+    "changelog": "- Fix: Update-Download nutzt jetzt immer korrekte Version-URL\n- Fix: GitHub CDN Cache-Bypass beim Manifest-Check\n- Fix: URL-Korrektur wenn Manifest-URL nicht zur Version passt",
+    "size": 0,
     "min_python": "3.8",
-    "released": "2026-02-21"
+    "released": "2026-02-20"
 }
