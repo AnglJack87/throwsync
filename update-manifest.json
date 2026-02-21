@@ -1,13 +1,13 @@
 {
-    "version": "2.4.8",
-    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-v2.4.8.zip",
+    "version": "2.4.9",
+    "download_url": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.9/throwsync-v2.4.9.zip",
     "downloads": {
-        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-v2.4.8.zip",
-        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-linux-x64",
-        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-win-x64.exe",
-        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.8/throwsync-2.4.8-macos-arm64"
+        "source": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.9/throwsync-v2.4.9.zip",
+        "linux-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.9/throwsync-2.4.9-linux-x64",
+        "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.9/throwsync-2.4.9-win-x64.exe",
+        "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.4.9/throwsync-2.4.9-macos-arm64"
     },
-    "changelog": "- Fix: WLED Persistent Session statt neue pro Request\n- Fix: Timeout 5s→3s, weniger ESP-Überlastung\n- Fix: Log-Spam bei offline Geräten unterdrückt\n- Fix: Session-Cleanup bei Shutdown",
+    "changelog": "- Debug: WLED set_device_state Logging für Fehlersuche\n- Bessere Fehlermeldung bei fehlender Device-Zuordnung",
     "size": 0,
     "min_python": "3.8",
     "released": "2026-02-20"
