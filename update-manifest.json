@@ -7,8 +7,8 @@
         "win-x64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-win-x64.exe",
         "macos-arm64": "https://github.com/AnglJack87/throwsync/releases/download/v2.5.4/throwsync-2.5.4-macos-arm64"
     },
-    "changelog": "- Fix: board-ready erkennt abgebrochenen Takeout nach Board-Reset\n- LED wechselt sofort zurück auf my_turn/opponent_turn\n- Fix: Auto-Neustart nach Update (SIGINT statt SIGTERM)\n- Fix: Update-Download URL Cache-Bypass + Korrektur",
-    "size": 0,
+    "changelog": "- v2.5.4 - Fix: board-ready erkennt Takeout-Abbruch nach Board-Reset",
+    "size": 4583583,
     "min_python": "3.8",
-    "released": "2026-02-20"
+    "released": "2026-02-21"
 }
